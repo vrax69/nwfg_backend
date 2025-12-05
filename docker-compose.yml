@@ -1,0 +1,30 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --node-id 0
+      - --check=false
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+
+  users-service:
+    build:
+      context: ./services/users-service
+    container_name: users-service
+    ports:
+      - "4001:4001"
+    env_file:
+      - ./env/users.env
+    depends_on:
+      - redpanda
+    restart: always
