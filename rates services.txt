@@ -1,0 +1,346 @@
+bueno antes de continuar entiende que esta es la estructura general
+Perfecto Brian, aquí tienes **EL RESUMEN DEFINITIVO** del *nuevo CORE de Utilities* en NWFG — claro, estructurado, y suficientemente completo como para reabrir cualquier conversación sin perder contexto.
+Este es el **documento oficial de arquitectura**, explicado *en español claro pero profesional*.
+
+---
+
+# 🔥 **NUEVO CORE NWFG — MODELO DE UTILITIES (Resumen Maestro)**
+
+*(Cómo funciona cada tabla, cómo interactúan y por qué existen)*
+
+---
+
+# 1️⃣ **utilities** — *LA TABLA PRINCIPAL (la entidad real de negocio)*
+
+Esta es la tabla **padre** que representa **una utility real**, limpia, estandarizada y única.
+
+### ✔ Qué representa
+
+Una empresa de energía en su versión estandarizada, sin importar cómo venga en cada ratesheet.
+
+### ✔ Ejemplos reales
+
+* AEP - Columbus Southern
+* PECO
+* National Grid MA
+* Dominion Gas Ohio
+* ConEd
+* DTE
+
+### ✔ Qué NO representa
+
+* No representa proveedores (providers)
+* No representa nombres del SPL (alias)
+* No representa versiones eléctricas/gas por separado
+  ⇒ *Eso se maneja en identifiers*
+
+### ✔ Campos clave
+
+| Campo           | Qué significa                                                           |
+| --------------- | ----------------------------------------------------------------------- |
+| `id`            | Identificador único                                                     |
+| `standard_name` | Nombre limpio de la utility tal como debe mostrarse al usuario          |
+| `state`         | Estado de operación                                                     |
+| `commodity`     | Electric / Gas / Both (solo indica si la utility opera ambos servicios) |
+| `default_unit`  | Unidad principal para electricidad (si aplica)                          |
+| `phone`         | Customer service                                                        |
+| `website`       | Sitio de la utility                                                     |
+| `logo_url`      | Logo estandarizado                                                      |
+
+### ✔ Por qué existe
+
+Para unificar todas las utilidades dispersas en diferentes ratesheets y proveedores.
+
+---
+
+# 2️⃣ **utility_aliases** — *LOS ALIAS DEL EXCEL, la capa de reconocimiento automático*
+
+### ✔ Qué representa
+
+Todos los nombres posibles con los que un SPL o proveedor puede llamar una misma utility.
+
+Ej:
+
+Utility real = **PECO**
+Aliases:
+
+* PECO
+* PECO Energy
+* PECO Gas
+* PECO Electric
+* PECO – Philadelphia Electric Company
+
+### ✔ Cómo funciona
+
+Cuando importas un ratesheet:
+
+1. El sistema extrae el nombre de utility del Excel.
+2. Lo busca en `utility_aliases.alias`.
+3. Si lo encuentra → obtiene el `utility_id`.
+4. Si NO lo encuentra → el frontend activa un *stepper* para crear nuevo alias.
+
+### ✔ Campos clave
+
+| Campo        | Qué significa                                |
+| ------------ | -------------------------------------------- |
+| `alias`      | El nombre EXACTO como viene en el SPL        |
+| `utility_id` | A qué utility real pertenece                 |
+| `commodity`  | Electric/Gas para ese alias específico       |
+| `unit_type`  | Unidad que aplica a ese alias (KWH/CCF/etc.) |
+| `status`     | Active / Pending review                      |
+| `is_global`  | Si aplica para cualquier provider            |
+
+### ✔ Por qué existe
+
+Para que el sistema pueda entender cualquier ratesheet automáticamente.
+
+---
+
+# 3️⃣ **utility_identifiers** — *LO QUE DEBEMOS PEDIRLE AL CLIENTE SEGÚN EL SERVICIO*
+
+### ✔ Qué representa
+
+Cada utility tiene **requisitos distintos** para identificar un cliente.
+
+Pero, IMPORTANTE:
+
+### 🔥 Cada utility puede requerir **diferentes identificadores para Electric y para Gas**.
+
+Ejemplos reales:
+
+| Utility          | Commodity    | Identifier                    |
+| ---------------- | ------------ | ----------------------------- |
+| PECO             | Electric     | Choice ID                     |
+| PECO             | Gas          | Choice ID                     |
+| PSEG             | Electric     | POD ID                        |
+| PSEG             | Gas          | Account Number + Meter Number |
+| National Grid MA | Gas          | Account + Meter               |
+| ConEd            | Electric/Gas | Account Number                |
+
+### ✔ Qué contiene
+
+| Campo               | Significado                                              |
+| ------------------- | -------------------------------------------------------- |
+| `utility_id`        | A qué utility pertenece                                  |
+| `service_type`      | Electric / Gas                                           |
+| `identifier_label`  | Ej. “Choice ID”, “Account Number”, “POD ID”              |
+| `identifier_format` | Ej. “10 digits”, “XXXXXX-XXXX”                           |
+| `unit_of_measure`   | KWH / CCF / THERM / MCF ← *independiente del identifier* |
+| `notes`             | Notas adicionales                                        |
+
+### ✔ Para qué existe
+
+Para que el **frontend sepa exactamente qué preguntar** cuando un agente registra un cliente.
+
+---
+
+# 4️⃣ **rates** — *Los programas de energía*
+
+Esta tabla recibe los datos crudos ya normalizados después de importar un ratesheet.
+
+### ✔ Qué contiene
+
+| Campo            | Significado                                            |
+| ---------------- | ------------------------------------------------------ |
+| `provider_id`    | El proveedor que vende el plan (Spark, CleanSky, etc.) |
+| `utility_id`     | Utility real asociada                                  |
+| `product_name`   | Nombre del plan                                        |
+| `rate`           | Precio                                                 |
+| `term`           | Meses                                                  |
+| `customer_type`  | Residential / Commercial                               |
+| `commodity_type` | Electric / Gas                                         |
+| `unit_type`      | KWH / CCF / etc                                        |
+| `raw_json`       | Datos originales del ratesheet                         |
+
+### ✔ Por qué existe
+
+Para mantener un repositorio limpio de todos los planes ofrecidos.
+
+---
+
+# 5️⃣ **rates_view** — *La vista final que consulta el frontend*
+
+Esta vista combina:
+
+* rates
+* utilities
+* providers
+* utility_aliases (solo para referencia, no para mostrar al usuario)
+
+### ✔ ¿Qué devuelve?
+
+Un registro por cada plan existente, con toda la metadata unificada.
+
+| Campo         | Ejemplo  |
+| ------------- | -------- |
+| utility_name  | PECO     |
+| state         | PA       |
+| commodity     | Electric |
+| unit_type     | KWH      |
+| provider_name | Spark    |
+| rate          | 0.1123   |
+| term          | 12       |
+
+### ✔ Por qué existe
+
+Para que el frontend no tenga que hacer JOINs complejos.
+
+---
+
+# 🔥 FLUJO COMPLETO Y DEFINITIVO
+
+### 1. Llega un ratesheet
+
+El sistema lee:
+
+* SPL Utility Name
+* Commodity (si existe)
+* Rate
+* Term
+* Notes
+* Etc.
+
+### 2. Se busca el nombre del SPL en `utility_aliases`
+
+| Caso                | Acción                                       |
+| ------------------- | -------------------------------------------- |
+| Alias encontrado    | Obtiene `utility_id`                         |
+| Alias NO encontrado | Se activa el stepper del FE para crear alias |
+
+### 3. Se crea un registro en **rates**
+
+### 4. El frontend consulta:
+
+```
+SELECT * FROM rates_view WHERE utility_id = X
+```
+
+### 5. Al agente se le muestra:
+
+* Nombre real de utility
+* Todos los planes disponibles
+* Identificadores requeridos según commodity
+* Unidad de medida correcta
+* Teléfono, logo y estado
+
+---
+
+# 🧠 Concepto clave
+
+Aunque una utility tenga BOTH,
+sus **identifiers y units** se manejan por separado:
+
+| Utility | Commodity | Unit | Identifier |
+| ------- | --------- | ---- | ---------- |
+| PECO    | Electric  | KWH  | Choice ID  |
+| PECO    | Gas       | CCF  | Choice ID  |
+
+Por eso `utility_identifiers` es independiente.
+
+---
+
+# 🎯 CIERRE
+
+El nuevo core:
+
+* **Normaliza + unifica utilities**
+* Permite importar cualquier ratesheet
+* Gestiona alias automáticamente
+* Define qué datos debe pedir el agente
+* Le da al front una vista simple para mostrar planes
+
+---
+
+Si quieres, ahora puedo generar:
+
+### ✔ CRUD completo (insert massive)
+
+### ✔ queries de ejemplo
+
+### ✔ diagramas del modelo
+
+### ✔ explicación para desarrolladores
+
+### ✔ explicación para tu profesor / empresa
+
+Dime qué quieres.
+
+Schema: Nwfg_master
+Table: rates
+Columns:
+id bigint AI PK 
+provider_id int 
+utility_id bigint 
+product_name varchar(255) 
+program_code varchar(100) 
+rate decimal(9,6) 
+msf decimal(9,6) 
+etf varchar(50) 
+term int 
+customer_type enum('Residential','Commercial','Industrial') 
+commodity_type enum('Electric','Gas') 
+unit_type enum('KWH','THERM','CCF','MCF') 
+ptc decimal(9,6) 
+savings decimal(9,6) 
+special_offers text 
+notes text 
+raw_json json 
+import_batch_id varchar(100) 
+validation_status enum('Pending','Validated','Rejected','In Review') 
+created_at timestamp 
+updated_at timestamp
+Table: script_assignments
+Columns:
+assignment_id bigint AI PK 
+script_id bigint 
+user_id bigint 
+role enum('reader','editor','reviewer')
+Table: script_sections
+Columns:
+section_id bigint AI PK 
+script_id bigint 
+section_order int 
+section_name varchar(255) 
+section_text longtext 
+conditions json
+Table: scripts
+Columns:
+script_id bigint AI PK 
+provider_id int 
+language enum('EN','ES') 
+channel enum('Inbound','Outbound','TPV','QA') 
+script_title varchar(255) 
+version varchar(50) 
+created_at timestamp 
+updated_at timestamp
+Table: utilities
+Columns:
+id bigint AI PK 
+standard_name varchar(255) 
+state varchar(10) 
+commodity enum('Gas','Electric','Both') 
+default_unit enum('KWH','THERM','CCF','MCF') 
+phone varchar(50) 
+website varchar(300) 
+logo_url varchar(300) 
+active tinyint 
+created_at timestamp 
+updated_at timestamp
+Table: utility_aliases
+Columns:
+id bigint AI PK 
+alias varchar(255) 
+utility_id bigint 
+status enum('Active','Inactive') 
+notes text 
+created_at timestamp
+Table: utility_identifiers
+Columns:
+id bigint AI PK 
+utility_id bigint 
+service_type enum('Electric','Gas') 
+identifier_label varchar(255) 
+identifier_format varchar(500) 
+unit_of_measure enum('KWH','THERM','CCF','MCF') 
+notes text 
+created_at timestamp

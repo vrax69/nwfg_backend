@@ -1,44 +1,62 @@
-import { db } from "../config/db.js";
 import jwt from "jsonwebtoken";
+import { db } from "../config/db.js";
 
-/* ============================================
-   LOGIN REAL CONTRA BASE DE DATOS
-============================================ */
 export async function login(req, res) {
-  try {
-    const { email, password } = req.body;
+  const { email, password } = req.body;
 
+  try {
     const [rows] = await db.query(
-      "SELECT * FROM users WHERE email = ? AND password = ?",
-      [email, password]
+      `SELECT id, nombre, email, rol, centro, password, status
+       FROM usuarios WHERE email = ? LIMIT 1`,
+      [email]
     );
 
-    if (rows.length === 0) {
-      return res.status(401).json({ error: "Credenciales inválidas" });
-    }
+    if (rows.length === 0)
+      return res.status(400).json({ error: "Credenciales inválidas" });
 
     const user = rows[0];
 
+    if (user.status !== "active")
+      return res.status(403).json({ error: "Usuario inactivo" });
+
+    if (password !== user.password)
+      return res.status(400).json({ error: "Credenciales inválidas" });
+
+    // Crear JWT
     const token = jwt.sign(
-      { id: user.id, email: user.email },
+      {
+        id: user.id,
+        email: user.email,
+        rol: user.rol,
+        nombre: user.nombre,
+      },
       process.env.JWT_SECRET,
-      { expiresIn: "24h" }
+      { expiresIn: "2h" }
     );
 
-    return res.json({ token, user });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        nombre: user.nombre,
+        email: user.email,
+        rol: user.rol,
+        centro: user.centro,
+      },
+    });
+
+  } catch (error) {
+    console.error("Error login:", error);
+    return res.status(500).json({ error: "Error interno" });
   }
 }
 
-/* ============================================
-   REGISTER MOCK (TEMPORAL) — SOLO PARA QUE ARRANQUE
-============================================ */
-export async function register(req, res) {
-  const { email, password } = req.body;
+// Logout dummy (solo para frontend)
+export function logout(req, res) {
+  return res.json({ message: "Logout exitoso" });
+}
 
-  return res.json({
-    msg: "Usuario registrado (mock, pendiente lógica real)",
-    user: { id: Date.now(), email }
-  });
+// Validar JWT
+export function validate(req, res) {
+  return res.json({ valid: true, user: req.user });
 }
