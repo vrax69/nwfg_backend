@@ -344,3 +344,301 @@ identifier_format varchar(500)
 unit_of_measure enum('KWH','THERM','CCF','MCF') 
 notes text 
 created_at timestamp
+
+no olvides que todos los env van en la raiz
+C:\Users\bllanes\Documents\nwfg_docker\env
+
+
+-------------
+🔥 PLAN MAESTRO DE CONSTRUCCIÓN — RATES SERVICE (Fase por Fase)
+
+Este será nuestro roadmap oficial, ordenado, sin saltos, igual al users-service, listo para pasar a producción con Docker y Ubuntu.
+
+Lo haremos por capas, asegurando que cada una funcione antes de avanzar.
+
+✅ FASE 1 — Configuración base del microservicio
+Objetivo:
+
+Que el servicio corra vacío, responda /health, y tenga conexión a ambas BD.
+
+Archivos a crear/llenar:
+
+package.json
+
+.dockerignore
+
+app.js
+
+server.js
+
+src/config/db.js
+
+src/routes/health.routes.js
+
+src/controllers/health.controller.js
+
+Resultado:
+
+npm start o docker compose up → servicio arrancado en localhost:4003/health.
+
+👉 Esta fase la hacemos inmediatamente.
+
+✅ FASE 2 — Módulo UTILITIES (base del core)
+
+Antes de rates, necesitamos utilities funcional.
+
+Endpoints:
+GET
+
+/utilities
+
+/utilities/:id
+
+POST
+
+/utilities (crear utility estándar)
+
+/utilities/:id/identifiers
+
+/utilities/:id/aliases
+
+Archivos a llenar:
+
+src/controllers/utilities.controller.js
+
+src/models/utilities.model.js
+
+src/routes/utilities.routes.js
+
+src/validators/utility.validator.js (opcional más adelante)
+
+db.js (función dedicada para queries)
+
+Resultado:
+
+Frontend podrá:
+
+Mostrar todas las utilities
+
+Mostrar utility + identifiers + aliases
+
+Crear nuevas utilities
+
+✅ FASE 3 — Aliases: Resolver, Crear y Normalizar
+
+El sistema depende de resolver alias cuando llega un Excel.
+
+Endpoints:
+
+GET
+
+/aliases
+
+/aliases/resolve?alias=texto
+
+/aliases/utility/:utility_id
+
+POST
+
+/aliases (crear alias nuevo)
+
+Archivos:
+
+alias.model.js
+
+aliasResolver.js (cerebro del reconocimiento)
+
+aliases.controller.js
+
+aliases.routes.js
+
+Resultado:
+
+Resolver nombres del SPL automáticamente
+
+Crear alias desde interfaz del admin
+
+✅ FASE 4 — Identifiers (qué pedir al cliente)
+
+Endpoints:
+
+GET
+
+/identifiers?utility_id=X
+
+/identifiers/:id
+
+POST
+
+/identifiers
+
+PUT
+
+/identifiers/:id
+
+Archivos:
+
+identifiers.model.js
+
+identifiers.controller.js
+
+identifiers.routes.js
+
+Resultado:
+
+Saber qué identificadores pedir según utility y commodity.
+
+🔥 FASE 5 — RATES (núcleo del microservicio)
+
+Este es el módulo más importante.
+
+Endpoints:
+
+GET
+
+/rates
+
+/rates/:id
+
+POST
+
+/rates/bulk ← Importación masiva desde Excel normalizado
+
+PATCH
+
+/rates/:id/status
+
+POST
+
+/rates/batch/:id/reject
+
+Archivos:
+
+rates.model.js
+
+rates.controller.js
+
+rates.routes.js
+
+rate.validator.js
+
+Resultado:
+
+Rates importados correctamente
+
+Validación, rechazo, edición de status
+
+Integración con importer (Kafka opcional)
+
+🔥 FASE 6 — Integración con Providers (user_data_tpv_staging)
+
+Aquí conectamos el rates-service al esquema del user-service:
+
+Tablas que usaremos:
+
+proveedores → listar providers en el front
+
+(si hace falta) user_provider_account → permisos por proveedor
+
+Endpoints nuevos:
+
+/providers
+
+/providers/:id
+
+Archivos:
+
+providers.model.js
+
+providers.controller.js
+
+providers.routes.js
+
+Resultado:
+
+El servicio sabrá qué providers existen
+
+Rates podrán asignarse correctamente al provider_id
+
+🔥 FASE 7 — Normalizadores y lógica avanzada del sistema
+
+Archivos en /utils:
+
+rateNormalizer.js → convierte los datos del Excel a JSON listo para bulk
+
+aliasResolver.js → matching fuzzy entre nombres
+
+commodityResolver.js → determine Electric / Gas / Both
+
+logger.js → logs estandarizados
+
+🔥 FASE 8 — Seguridad y Middleware
+
+Cargar JWT igual que en user-service
+
+auth.middleware.js
+
+Roles (Admin, QA, Agent)
+
+Permisos:
+
+Admin → CRUD total
+
+QA → revisar rates, cambiar status
+
+Agente → solo consultar rates/utilities
+
+🔥 FASE 9 — DOCKER + DEPLOY
+
+Archivos:
+
+Dockerfile
+
+Node 20 alpine
+
+Copiar app
+
+Exponer puerto
+
+CMD correcto
+
+docker-compose.yml
+
+Variables del env
+
+Conexiones DB
+
+.env
+
+Debe ir en:
+
+C:\Users\bllanes\Documents\nwfg_docker\env\rates.env
+
+
+Variables ejemplo:
+
+PORT=4003
+MASTER_DB_HOST=host.docker.internal
+MASTER_DB_USER=root
+MASTER_DB_PASSWORD=1234
+USER_DB_HOST=host.docker.internal
+USER_DB_USER=root
+USER_DB_PASSWORD=1234
+JWT_SECRET=mysecret
+
+🔥 FASE 10 — Pasar a Producción (Ubuntu Server)
+
+Pasos:
+
+git pull o subir carpeta
+
+docker build -t rates-service .
+
+docker compose up -d
+
+Nginx reverse proxy
+
+Hacerlo accesible vía:
+
+https://api.nwfg.com/rates
+

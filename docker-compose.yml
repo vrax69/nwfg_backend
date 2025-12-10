@@ -28,3 +28,15 @@ services:
     depends_on:
       - redpanda
     restart: always
+  rates-service:
+    build:
+      context: ./services/rates-service
+      dockerfile: Dockerfile
+    container_name: rates-service
+    ports:
+      - "4002:4002"
+    env_file:
+      - ./env/rates.env
+    depends_on:
+      - redpanda
+    restart: always
