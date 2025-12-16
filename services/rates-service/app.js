@@ -14,6 +14,7 @@ const auth = require('./src/middleware/auth.middleware');
 const healthRoutes = require('./src/routes/health.routes');
 const utilitiesRoutes = require('./src/routes/utilities.routes');
 const identifiersRoutes = require('./src/routes/identifiers.routes');
+const ratesRoutes = require('./src/routes/rates.routes');
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use(auth(true));
 // Protected routes (authentication required)
 app.use('/utilities', utilitiesRoutes);
 app.use('/identifiers', identifiersRoutes);
+app.use('/rates', ratesRoutes);
 
 
 // 404 handler

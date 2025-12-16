@@ -14,4 +14,3 @@ router.post('/', ctrl.create);
 router.delete('/:id', ctrl.delete);
 
 module.exports = router;
-s
