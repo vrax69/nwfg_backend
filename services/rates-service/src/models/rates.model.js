@@ -1,82 +1,75 @@
 // src/models/rates.model.js
 const { masterPool } = require('../config/db');
+// ... función getRates (ya existe) ...
 
 /**
- * Obtiene rates con filtros opcionales.
- * Si no se pasa ningún filtro, devuelve los primeros 100 registros.
+ * Inserta múltiples registros en la tabla 'rates' en una sola consulta.
+ * @param {Array<object>} ratesArray - Arreglo de objetos de tarifas ya normalizadas.
+ * @returns {number} El ID del primer registro insertado.
  */
-const getRates = async (filters = {}) => {
-  const {
-    utility_id,
-    provider_id,
-    state,
-    commodity_type,
-    customer_type,
-    limit = 100,
-    offset = 0,
-  } = filters;
-
-  let sql = `
-    SELECT
-      id,
-      provider_id,
-      utility_id,
-      product_name,
-      program_code,
-      rate,
-      msf,
-      etf,
-      term,
-      customer_type,
-      commodity_type,
-      unit_type,
-      ptc,
-      savings,
-      special_offers,
-      notes,
-      import_batch_id,
-      validation_status,
-      created_at,
-      updated_at
-    FROM rates
-    WHERE 1 = 1
-  `;
-
-  const params = [];
-
-  if (utility_id) {
-    sql += ' AND utility_id = ?';
-    params.push(utility_id);
+const bulkInsert = async (ratesArray) => {
+  if (!ratesArray || ratesArray.length === 0) {
+    return 0;
   }
 
-  if (provider_id) {
-    sql += ' AND provider_id = ?';
-    params.push(provider_id);
-  }
+  const columns = [
+    'provider_id',
+    'utility_id',
+    'product_name',
+    'program_code',
+    'rate',
+    'msf',
+    'etf',
+    'term',
+    'customer_type',
+    'commodity_type',
+    'unit_type',
+    'ptc',
+    'savings',
+    'special_offers',
+    'notes',
+    'raw_json',
+    'import_batch_id',
+    'validation_status',
+    'created_at',
+    'updated_at'
+  ];
 
-  if (state) {
-    // filtramos por state a través de utilities
-    sql += ' AND utility_id IN (SELECT id FROM utilities WHERE state = ?)';
-    params.push(state);
-  }
+  // Crear la lista de arrays de valores (Valores preparados para la consulta)
+  const values = ratesArray.map(rate => [
+    rate.provider_id,
+    rate.utility_id,
+    rate.product_name,
+    rate.program_code,
+    rate.rate,
+    rate.msf,
+    rate.etf,
+    rate.term,
+    rate.customer_type,
+    rate.commodity_type,
+    rate.unit_type,
+    rate.ptc,
+    rate.savings,
+    rate.special_offers,
+    rate.notes,
+    rate.raw_json,
+    rate.import_batch_id,
+    rate.validation_status,
+    new Date(), // created_at
+    new Date()  // updated_at
+  ]);
 
-  if (commodity_type) {
-    sql += ' AND commodity_type = ?';
-    params.push(commodity_type);
-  }
+  const sql = `
+        INSERT INTO rates (${columns.join(', ')}) 
+        VALUES ?
+    `;
 
-  if (customer_type) {
-    sql += ' AND customer_type = ?';
-    params.push(customer_type);
-  }
+  // Usamos pool.query con el placeholder '?' para inserción múltiple
+  const [result] = await masterPool.query(sql, [values]);
 
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  params.push(Number(limit), Number(offset));
-
-  const [rows] = await masterPool.query(sql, params);
-  return rows;
+  return result.insertId;
 };
 
 module.exports = {
-  getRates,
+  bulkInsert // 🔥 Exportar la nueva función
 };

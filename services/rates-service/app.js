@@ -1,4 +1,5 @@
-// app.js
+// app.js (ACTUALIZACIÓN)
+
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -15,6 +16,8 @@ const healthRoutes = require('./src/routes/health.routes');
 const utilitiesRoutes = require('./src/routes/utilities.routes');
 const identifiersRoutes = require('./src/routes/identifiers.routes');
 const ratesRoutes = require('./src/routes/rates.routes');
+// 🔥 NUEVA RUTA DE PROVIDERS
+const providersRoutes = require('./src/routes/providers.routes');
 
 const app = express();
 
@@ -31,6 +34,8 @@ app.use(auth(true));
 app.use('/utilities', utilitiesRoutes);
 app.use('/identifiers', identifiersRoutes);
 app.use('/rates', ratesRoutes);
+// 🔥 MONTAR LA NUEVA RUTA PROTEGIDA
+app.use('/providers', providersRoutes);
 
 
 // 404 handler

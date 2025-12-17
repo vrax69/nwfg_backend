@@ -642,3 +642,224 @@ Hacerlo accesible vía:
 
 https://api.nwfg.com/rates
 
+Perfecto. Te dejo LA LISTA CONSOLIDADA Y SEPARADA POR SPL / PROVIDER de TODOS los headers que existen en los ratesheets que mencionaste, sin inventar nada y respetando que Elektra Spark ≠ Spark Energy ≠ Spark (SPE).
+
+Esto es lo que vamos a cubrir con rateNormalizer + raw_json.
+
+📄 HEADERS POR RATESHEET / PROVIDER
+🔹 1. CleanSky / CS / CSE / Clean Sky Energy
+
+Headers reales:
+
+State
+Utility
+Product Name
+Program Code
+CleanSky's Rate
+MSF
+Term
+ETF
+Notes
+
+🔹 2. Eco Plus / Eco Energy
+
+⚠️ Antes NO había ratesheet, ahora SÍ (actualizado hoy)
+
+Headers nuevos:
+
+Utility
+Commodity
+Marketer/Vendor
+Rate Class Code
+Rate Class Description
+Comments
+Service Fee
+Rate
+Adder
+Status
+Account Type
+sRateClass2Code
+iRateClass2Term
+sRateClass3Code
+iRateClass3Term
+
+🔹 3. Elektra Spark (SPL independiente)
+
+👉 No compartas headers con Spark Energy
+
+Headers conocidos / mínimos:
+
+Utility
+Commodity
+Rate
+Term
+MSF
+ETF
+Product Name
+Program Code
+Notes
+
+
+(Muchos valores vienen fijos / manuales)
+
+🔹 4. Spark Energy (SPE)
+
+Headers completos:
+
+ProductID
+CompanyDBAName
+Market
+Full Utility Name
+ProductName
+Commodity
+UtilityState
+UnitOfMeasure
+ProductType
+Rate
+PTC
+Savings?
+MSF
+EarlyTerminationFee
+Term
+CustomerTypes
+RenewablePercentage
+SpecialOffers
+
+🔹 5. Indra Energy
+
+Tabla semi-manual / portal
+
+Headers identificados:
+
+Utility
+Portal URL
+Rate
+Status
+Provider Code
+Program Code
+Created At
+
+
+(Muchos campos vienen vacíos o fijos)
+
+🔹 6. NextVolt
+
+Headers (formato estándar simple):
+
+State
+Utility
+Commodity
+Product Name
+Rate
+Term
+MSF
+ETF
+Customer Type
+Notes
+
+🔹 7. NGE – National Gas & Electric
+
+Headers oficiales:
+
+Program Code
+Market
+Utility
+Customer Type
+Commodity
+Plan Type
+Term
+Promo Code
+Rate ($)
+Monthly Service Fee ($)
+Cancellation Fee ($)
+Notes
+
+🔹 8. Polaris
+
+Headers conocidos:
+
+Utility
+Commodity
+Rate
+Term
+MSF
+ETF
+Rate Duration
+Product Name
+Program Code
+
+🔹 9. Rushmore
+
+Headers:
+
+Utility
+Commodity
+Rate
+Term
+MSF
+ETF
+Customer Type
+Status
+Notes
+
+
+(Ejemplo que mostraste es manual)
+
+🔹 10. WGL
+
+Headers completos:
+
+Commodity
+Brand Name
+Utility Provider
+Abbreviation
+Customer Type
+Program Name
+Program Code
+Rate ($)
+Unit
+ETF ($)
+MSF ($)
+Term (Months)
+Zipcodes
+Promo
+CSO%
+Wind%
+Rate Type
+
+🧠 HEADERS TRANSVERSALES (APARECEN EN VARIOS)
+
+Estos aparecen con nombres distintos pero mismo significado:
+
+Concepto	Variantes
+Utility	Utility / Full Utility Name / Utility Provider
+Rate	Rate / CleanSky's Rate / Rate ($)
+Term	Term / Term (Months)
+MSF	MSF / Monthly Service Fee ($) / Service Fee
+ETF	ETF / EarlyTerminationFee / Cancellation Fee
+Commodity	Commodity
+Product	Product Name / Program Name
+Program Code	Program Code / ProductID
+Notes	Notes / Comments
+🎯 CONCLUSIÓN CLAVE (IMPORTANTE)
+
+NO vamos a crear columnas nuevas
+
+NO todos los headers mapean
+
+TODO lo no mapeado va a raw_json
+
+rates cubre el 90%
+
+raw_json cubre el 100%
+
+Este listado es la base exacta para construir:
+
+rateNormalizer.js
+
+Validaciones por provider
+
+Bulk insert limpio
+
+
+

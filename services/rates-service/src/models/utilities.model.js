@@ -142,6 +142,23 @@ const UtilitiesModel = {
       [utility_id]
     );
     return rows;
+  },
+
+  // ================================================
+  // GET BASIC INFO (for resolvers)
+  // ================================================
+  async getBasicInfoById(id) {
+    const [rows] = await masterPool.query(
+      `
+      SELECT 
+        commodity,
+        default_unit
+      FROM utilities
+      WHERE id = ?
+      `,
+      [id]
+    );
+    return rows[0] || null;
   }
 };
 
