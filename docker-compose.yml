@@ -17,6 +17,13 @@ services:
       - --kafka-addr PLAINTEXT://0.0.0.0:9092
       - --advertise-kafka-addr PLAINTEXT://redpanda:9092
 
+  redis:
+    image: redis:alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    restart: always
+
   users-service:
     build:
       context: ./services/users-service
@@ -39,4 +46,20 @@ services:
       - ./env/rates.env
     depends_on:
       - redpanda
+      - redis
     restart: always
+
+  upload-service:
+    build: ./services/upload-service
+    container_name: upload-service
+    ports:
+      - "4005:4005"
+    environment:
+      - PORT=4005
+      - RATES_SERVICE_URL=http://rates-service:4002
+      - NODE_ENV=development
+    volumes:
+      - ./services/upload-service:/app
+      - /app/node_modules
+    depends_on:
+      - rates-service

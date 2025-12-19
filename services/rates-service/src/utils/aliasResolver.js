@@ -1,57 +1,31 @@
-// src/utils/aliasResolver.js
-
 const { masterPool } = require('../config/db');
 
 /**
- * Función central para resolver el nombre de la Utility del ratesheet (alias) 
- * a la ID de la Utility estandarizada (utility_id).
- * * El sistema busca una coincidencia exacta en la tabla utility_aliases.
- * * @param {string} splUtilityName - El nombre de la Utility tal como viene en el Ratesheet (SPL).
- * @returns {object|null} Retorna { utility_id, commodity, unit_type } si lo encuentra, o null.
+ * Busca si un nombre de utilidad (alias) ya está mapeado a una Utility real.
  */
-async function resolveAlias(splUtilityName) {
-    if (!splUtilityName) {
-        return null;
-    }
-
-    // Limpia el nombre para prevenir errores de trailing/leading spaces.
-    const cleanAlias = splUtilityName.trim();
-
+const resolveAlias = async (aliasName) => {
     try {
-        // La búsqueda debe ser exacta (case-insensitive si es posible, pero aquí nos basamos en el trim)
-        const [rows] = await masterPool.query(
-            `
-            SELECT 
-                utility_id, 
-                commodity,
-                unit_type
-            FROM utility_aliases
-            WHERE alias = ?
-            LIMIT 1
-            `,
-            [cleanAlias]
-        );
+        // 1. Usamos 'alias' (nombre real en tu DB)
+        // 2. Filtramos por status 'Active' para mayor seguridad
+        const sql = `
+      SELECT utility_id 
+      FROM utility_aliases 
+      WHERE alias = ? AND status = 'Active' 
+      LIMIT 1
+    `;
+
+        const [rows] = await masterPool.query(sql, [aliasName]);
 
         if (rows.length > 0) {
-            // Devuelve la información clave que necesitamos para la inserción en rates
-            return {
-                utility_id: rows[0].utility_id,
-                commodity: rows[0].commodity,
-                unit_type: rows[0].unit_type,
-            };
+            // Retornamos el ID directamente para que el controlador lo use
+            return rows[0].utility_id;
         }
 
-        // Si no se encuentra el alias, el controlador debe marcar la tarifa como 'Pending'
-        // y activar el proceso de creación de alias en el Frontend, tal como indica el flujo.
-        return null;
-
+        return null; // No se reconoció el alias
     } catch (error) {
-        console.error("❌ Error in aliasResolver.js:", error);
-        // En caso de error de DB, lo manejamos devolviendo null para no detener la importación
+        console.error('❌ Error resolving alias:', error);
         return null;
     }
-}
-
-module.exports = {
-    resolveAlias,
 };
+
+module.exports = { resolveAlias };

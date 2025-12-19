@@ -2,19 +2,16 @@
 const express = require('express');
 const router = express.Router();
 const ratesController = require('../controllers/rates.controller');
-
-// 🔥 IMPORTAR TU MIDDLEWARE DE ROLES
 const requireRole = require('../middleware/role.middleware');
 
-
-
-// 🔥 NUEVA RUTA CON RESTRICCIÓN DE ROL
-// La autenticación (JWT) ya la maneja app.js para todas las rutas.
-// Aquí solo restringimos el rol para la operación crítica de inserción.
+// 🔥 Agregamos 'Administrador' para que coincida con tu base de datos
 router.post(
     '/bulk',
-    requireRole('Admin', 'QA'), // SOLO Admin y QA pueden cargar masivamente
+    requireRole('Admin', 'QA', 'Administrador'),
     ratesController.bulkInsert
 );
+
+router.post('/confirm-mapping', requireRole('Administrador', 'Admin'), ratesController.confirmMapping);
+
 
 module.exports = router;
