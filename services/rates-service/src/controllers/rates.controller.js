@@ -63,15 +63,21 @@ const bulkInsert = async (req, res) => {
     }
 
     // 🚀 EMITIR EVENTO PARA TIEMPO REAL
-    await sendMessage('rates-import-topic', {
-      type: 'IMPORT_COMPLETED',
-      provider_id,
-      batchId: importBatchId,
-      stats: {
-        inserted: validRates.length,
-        pending: pendingMapping.length
+    try {
+      if (process.env.KAFKA_OFF !== 'true' && typeof sendMessage === 'function') {
+        await sendMessage('rates-import-topic', {
+          type: 'IMPORT_COMPLETED',
+          provider_id,
+          batchId: importBatchId,
+          stats: {
+            inserted: validRates.length,
+            pending: pendingMapping.length
+          }
+        });
       }
-    });
+    } catch (kafkaError) {
+      console.warn('⚠️ Kafka no disponible, continuando sin enviar evento.');
+    }
 
     return res.status(201).json({
       success: true,

@@ -60,3 +60,7 @@ export function logout(req, res) {
 export function validate(req, res) {
   return res.json({ valid: true, user: req.user });
 }
+
+export function verifyTokenResponse(req, res) {
+  res.json({ success: true, user: req.user });
+}

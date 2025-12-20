@@ -50,16 +50,16 @@ services:
     restart: always
 
   upload-service:
-    build: ./services/upload-service
+    build:
+      context: ./services/upload-service
     container_name: upload-service
     ports:
       - "4005:4005"
-    environment:
-      - PORT=4005
-      - RATES_SERVICE_URL=http://rates-service:4002
-      - NODE_ENV=development
+    env_file:
+      - ./env/upload.env # <--- Apuntando a la carpeta central
     volumes:
       - ./services/upload-service:/app
       - /app/node_modules
     depends_on:
       - rates-service
+      - users-service

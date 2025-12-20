@@ -1,20 +1,21 @@
 import jwt from "jsonwebtoken";
 
-export function authMiddleware(req, res, next) {
-  const header = req.headers.authorization;
+export const authMiddleware = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
 
-  if (!header) {
-    return res.status(401).json({ error: "Token requerido" });
+  if (!token) {
+    return res.status(401).json({ message: 'No token provided' });
   }
 
-  const token = header.split(" ")[1];
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+  // IMPORTANTE: JWT_SECRET debe ser "NwfgMasterSecret2025!!"
+  // Asegúrate de que esté en tu .env
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      console.error('❌ JWT Verify Error:', err.message);
+      return res.status(403).json({ message: 'Invalid or expired token' });
+    }
+    req.user = user;
     next();
-
-  } catch (err) {
-    return res.status(401).json({ error: "Token inválido" });
-  }
-}
+  });
+};
