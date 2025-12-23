@@ -1,10 +1,14 @@
 const axios = require('axios');
 
 const authenticateToken = async (req, res, next) => {
-    // 1. Buscamos el header en cualquier formato (case-insensitive)
+    // 🔥 AÑADE ESTAS LÍNEAS AQUÍ: Son la única forma de saber qué llega
+    console.log('--- DEBUG: NUEVA PETICIÓN ---');
+    console.log('Headers recibidos:', JSON.stringify(req.headers, null, 2));
+
     const authHeader = req.headers['authorization'] || req.headers['Authorization'];
 
     if (!authHeader) {
+        // Si entra aquí, el log de arriba nos dirá POR QUÉ (si el header no llegó)
         return res.status(401).json({ success: false, message: "Missing Authorization header" });
     }
 

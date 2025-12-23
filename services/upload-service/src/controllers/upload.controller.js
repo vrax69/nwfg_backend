@@ -30,10 +30,16 @@ const uploadRates = async (req, res) => {
         console.log(`📦 Archivo parseado: ${rawData.length} filas detectadas.`);
 
         // 3. Enviar los datos al Rates Service
+        const token = req.headers['authorization'];
+
         const response = await axios.post(`${RATES_SERVICE_URL}/rates/bulk`, {
             provider_id,
             mapping,
             rates: rawData
+        }, {
+            headers: {
+                'Authorization': token
+            }
         });
 
         // 4. Retornar la respuesta del Rates Service al cliente (Yaak/Frontend)

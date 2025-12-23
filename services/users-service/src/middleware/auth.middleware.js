@@ -1,19 +1,18 @@
-import jwt from "jsonwebtoken";
+import jwt from 'jsonwebtoken';
 
 export const authMiddleware = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ message: 'No token provided' });
+    return res.status(401).json({ message: "No token provided" });
   }
 
-  // IMPORTANTE: JWT_SECRET debe ser "NwfgMasterSecret2025!!"
-  // Asegúrate de que esté en tu .env
+  // Usamos el JWT_SECRET que está en env/users.env
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) {
-      console.error('❌ JWT Verify Error:', err.message);
-      return res.status(403).json({ message: 'Invalid or expired token' });
+      console.error("❌ JWT Verification Failed:", err.message);
+      return res.sendStatus(401); // <--- Este es el 401 que reporta el upload-service
     }
     req.user = user;
     next();
