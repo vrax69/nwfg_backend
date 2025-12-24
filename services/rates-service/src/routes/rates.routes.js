@@ -13,5 +13,7 @@ router.post(
 
 router.post('/confirm-mapping', requireRole('Administrador', 'Admin'), ratesController.confirmMapping);
 
+router.post('/toggle-status', requireRole('Administrador', 'Admin'), ratesController.toggleProgramStatus);
+
 
 module.exports = router;
