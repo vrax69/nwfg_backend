@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: scripts-service
+  description: Gestiona guiones de venta dinámicos basados en estado y commodity.
+  annotations:
+    compass.atlassian.com/links: |
+      [
+        {"type": "repository", "url": "tu-url-de-git-si-tienes"},
+        {"type": "dashboard", "url": "http://localhost:4001/graphql"}
+      ]
+spec:
+  type: service
+  lifecycle: development
+  owner: bllanes
+  system: nwfg-platform
+

@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: upload-service
+  description: Servicio encargado de la ingesta y parseo de archivos Excel/CSV para la plataforma NWFG.
+  annotations:
+    compass.atlassian.com/links: |
+      [
+        {"type": "repository", "url": "tu-url-de-git-si-tienes"},
+        {"type": "dashboard", "url": "http://localhost:4005"}
+      ]
+spec:
+  type: service
+  lifecycle: development
+  owner: bllanes
+  system: nwfg-platform
+

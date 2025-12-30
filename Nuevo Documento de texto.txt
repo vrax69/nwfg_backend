@@ -1,0 +1,132 @@
+PS C:\Users\bllanes\Documents\nwfg_docker> tree /f /a
+Listado de rutas de carpetas
+El número de serie del volumen es 4206-9D47
+C:.
+|   .gitignore
+|   docker-compose.yml
+|   rates services.txt
+|   script service (old).txt
+|   scripts.txt
+|   user services.txt
+|
++---env
+|       gateway.env
+|       kafka.env
+|       rates.env
+|       upload.env
+|       users.env
+|
++---kafka
+|   |   docker-compose-kafka.yml
+|   |
+|   \---config
++---nginx
+|       nginx.conf
+|
+\---services
+    +---graphql-gateway
+    +---rates-service
+    |   |   app.js
+    |   |   Dockerfile
+    |   |   package.json
+    |   |   server.js
+    |   |
+    |   \---src
+    |       +---config
+    |       |       db.js
+    |       |       kafka.js
+    |       |       redis.js
+    |       |
+    |       +---controllers
+    |       |       aliases.controller.js
+    |       |       health.controller.js
+    |       |       identifiers.controller.js
+    |       |       providers.controller.js
+    |       |       rates.controller.js
+    |       |       utilities.controller.js
+    |       |
+    |       +---middleware
+    |       |       auth.middleware.js
+    |       |       role.middleware.js
+    |       |
+    |       +---models
+    |       |       alias.model.js
+    |       |       identifiers.model.js
+    |       |       providers.model.js
+    |       |       rates.model.js
+    |       |       utilities.model.js
+    |       |
+    |       +---routes
+    |       |       aliases.routes.js
+    |       |       health.routes.js
+    |       |       identifiers.routes.js
+    |       |       providers.routes.js
+    |       |       rates.routes.js
+    |       |       utilities.routes.js
+    |       |
+    |       +---utils
+    |       |       aliasResolver.js
+    |       |       commodityResolver.js
+    |       |       logger.js
+    |       |       rateNormalizer.js
+    |       |
+    |       \---validators
+    |               alias.validator.js
+    |               identifier.validator.js
+    |               rate.validator.js
+    |
+    +---scripts-service
+    +---subscription-service
+    +---upload-service
+    |   |   Dockerfile
+    |   |   index.js
+    |   |   package.json
+    |   |
+    |   +---node_modules
+    |   \---src
+    |       +---config
+    |       +---controllers
+    |       |       upload.controller.js
+    |       |
+    |       +---middleware
+    |       |       auth.middleware.js
+    |       |
+    |       +---routes
+    |       |       upload.routes.js
+    |       |
+    |       +---services
+    |       |       excel.service.js
+    |       |
+    |       \---utils
+    \---users-service
+        |   Dockerfile
+        |   package.json
+        |
+        \---src
+            |   app.js
+            |   server.js
+            |
+            +---config
+            |       db.js
+            |       kafka.js
+            |
+            +---controllers
+            |       auth.controller.js
+            |       users.controller.js
+            |
+            +---events
+            |   +---consumers
+            |   |       userEvents.consumer.js
+            |   |
+            |   \---producers
+            |           userEvents.producer.js
+            |
+            +---middleware
+            |       auth.middleware.js
+            |
+            \---routes
+                    auth.routes.js
+                    health.routes.js
+                    users.routes.js
+
+PS C:\Users\bllanes\Documents\nwfg_docker>

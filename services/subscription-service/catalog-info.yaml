@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: subscription-service
+  description: Servicio de gestión de suscripciones para la plataforma NWFG.
+  annotations:
+    compass.atlassian.com/links: |
+      [
+        {"type": "repository", "url": "tu-url-de-git-si-tienes"},
+        {"type": "dashboard", "url": "http://localhost:4003"}
+      ]
+spec:
+  type: service
+  lifecycle: development
+  owner: bllanes
+  system: nwfg-platform
+

@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: graphql-gateway
+  description: Gateway GraphQL que unifica el acceso a los servicios de la plataforma NWFG.
+  annotations:
+    compass.atlassian.com/links: |
+      [
+        {"type": "repository", "url": "tu-url-de-git-si-tienes"},
+        {"type": "dashboard", "url": "http://localhost:4000/graphql"}
+      ]
+spec:
+  type: service
+  lifecycle: development
+  owner: bllanes
+  system: nwfg-platform
+

@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: rates-service
+  description: Microservicio de tarifas que gestiona la importación, mapeo y consulta de tarifas energéticas con soporte para múltiples commodities y unidades.
+  annotations:
+    compass.atlassian.com/links: |
+      [
+        {"type": "repository", "url": "tu-url-de-git-si-tienes"},
+        {"type": "dashboard", "url": "http://localhost:4002"}
+      ]
+spec:
+  type: service
+  lifecycle: development
+  owner: bllanes
+  system: nwfg-platform
+

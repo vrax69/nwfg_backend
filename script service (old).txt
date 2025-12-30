@@ -1,0 +1,185 @@
+Perfecto. Aquí tienes un **resumen técnico, profundo, documentable y completo** del microservicio **`graphql-scripts`**, su razón de existir, arquitectura, diseño, decisiones técnicas, flujos, casos de uso y propósito dentro del ecosistema NWFG.
+
+---
+
+# 📘 **DOCUMENTACIÓN – Microservicio `graphql-scripts`**
+
+## 🧠 **Razón y Justificación del Microservicio**
+
+El microservicio **graphql-scripts** nace para resolver una necesidad crítica en NWFG:
+
+> **Centralizar y gestionar dinámicamente los scripts (guiones) utilizados por agentes para ventas, TPV y flujo de enrolamiento**, permitiendo edición, actualización, versionamiento y consumo desde el frontend sin afectar la estructura del resto del sistema.
+
+Antes existían guiones estáticos en archivos PDF/Word/Notion → esto provocaba:
+
+| Problema                                   | Consecuencia                                      |
+| ------------------------------------------ | ------------------------------------------------- |
+| versiones manuales                         | información desactualizada en plataformas         |
+| no existe estructura editable              | difícil modificar una sección sin romper el resto |
+| los agentes usan scripts distintos         | falta de estandarización en venta                 |
+| cambios tardan horas/días en implementarse | riesgo legal/comercial                            |
+
+### 🔥 Objetivo del microservicio
+
+Crear un backend capaz de:
+
+* almacenar scripts con estructura dinámica por **secciones**
+* permitir edición desde panel en tiempo real
+* versionamiento interno y trazabilidad de cambios
+* exponer la información por **GraphQL**
+* validar acceso mediante autenticación JWT
+* servir contenido para TPV + CRM + entrenamiento IA
+
+---
+
+## 🏗 **Diseño y Arquitectura**
+
+### 📌 Stack Tecnológico
+
+| Componente     | Tecnología                             |
+| -------------- | -------------------------------------- |
+| Lenguaje       | Node.js ES Modules                     |
+| API Layer      | **GraphQL (Apollo Server standalone)** |
+| DB Engine      | MySQL                                  |
+| ORM/Driver     | mysql2 pool                            |
+| Auth           | JWT vía microservicio `user-auth`      |
+| Monitorización | PM2                                    |
+| Consumo        | Frontend Next.js + futuro mobile/AI    |
+
+### 📂 Estructura del Proyecto
+
+```
+graphql-scripts/
+│ .env
+│ package.json
+│ README.md
+└── src/
+    ├── index.js          → servidor Apollo + middlewares
+    ├── db.js             → conexión MySQL pool
+    ├── schema.js         → tipos y modelos GraphQL
+    ├── resolvers.js      → lógica de queries/mutations
+    ├── scriptsDynamic/   → futuras plantillas dinámicas
+    └── users/            → validaciones con auth
+```
+
+### 🔐 Seguridad y Promesas del Diseño
+
+| Feature                        | Estado                       |
+| ------------------------------ | ---------------------------- |
+| Autenticación vía token Bearer | ✔ conectado a `auth-service` |
+| `SKIP_AUTH` modo test          | ✔ control por ENV            |
+| Roles (admin, editor, lectura) | ⟳ para implementar           |
+| Auditoría / track de cambios   | ✔ vía DB y logs              |
+
+```env
+PORT=3005
+AUTH_SERVICE_URL=https://nwfg.net/api/auth/verify
+SKIP_AUTH=0
+DB_HOST=localhost
+DB_USER=admin
+DB_PASSWORD=***
+DB_NAME=scripts_db
+```
+
+---
+
+## 🗄 Estructura de Datos en Base de Datos
+
+Base `scripts_db`:
+
+| Tabla             | Finalidad                                           |
+| ----------------- | --------------------------------------------------- |
+| `scripts`         | Contiene los guiones base (id, nombre, descripción) |
+| `script_sections` | Secciones del script (orden, contenido editable)    |
+| `script_versions` | Historial y cambios                                 |
+| `users_edits`     | Trazabilidad de ediciones (quién, cuándo)           |
+
+Ejemplo tabla `script_sections`:
+
+| id | script_id | section_name | content | order_index |
+| -- | --------- | ------------ | ------- | ----------- |
+
+Permite editar cada parte individualmente, sin romper el script completo.
+
+---
+
+## 🔗 Comunicación entre microservicios
+
+```
+Frontend <--GraphQL--> graphql-scripts <--REST--> user-auth
+                            |
+                          MySQL
+```
+
+* El frontend consulta secciones, crea nuevas, edita contenido, reordena.
+* Todos los cambios quedan centralizados y sincronizados en tiempo real.
+* `user-auth` valida identidad mediante token → returned user context.
+
+---
+
+## 📤 Endpoints (via GraphQL)
+
+### Query ejemplo (obtener secciones)
+
+```graphql
+query {
+  scriptSections(script_id: 1) {
+    section_id
+    section_name
+    content
+  }
+}
+```
+
+### Mutation ejemplo (editar texto)
+
+```graphql
+mutation {
+  updateSection(id: 10, content:"Nuevo contenido actualizado") {
+    success
+    message
+  }
+}
+```
+
+---
+
+## 🚀 Casos de Uso Reales
+
+| Caso                                             | Impacto                          |
+| ------------------------------------------------ | -------------------------------- |
+| equipo cambia texto legal → producción inmediato | elimina PDFs antiguos            |
+| crear variación para estado o proveedor          | multi-script sin duplicar lógica |
+| agentes visualizan la última versión en TPV      | mejora compliance y ventas       |
+| backend IA podrá leer guiones dinámicos          | entrenamiento conversacional     |
+
+---
+
+## 📌 Visión futura
+
+* Editor avanzado estilo Notion/Google Docs
+* Historico y revert cambios
+* Scripts parametrizados (estado, utility, plan)
+* Asistente IA que genera secciones
+* Exportación a PDF y plantillas para callcenter
+
+---
+
+## Conclusión Final
+
+El microservicio **graphql-scripts** existe para convertir el guion operativo
+de ventas en un **sistema dinámico, versionado, editable, seguro y centralizado**,
+abriendo puertas a automatización, IA comercial y escalabilidad del flujo operativo
+de NWFG.
+
+> Es el núcleo que garantizará que todos en la organización hablen **el mismo script**, actualizado y controlado en tiempo real.
+
+---
+
+Si deseas, puedo continuar con:
+
+📄 **documento PDF/WORD completo de arquitectura**
+📌 **diagramas UML** (casos de uso + secuencia + entidad-relación)
+🖥 **generar UI base del editor en Next.js + Hooks + Apollo**
+
+¿Quieres que te arme también el **diagrama visual arquitectónico**?

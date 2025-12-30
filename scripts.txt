@@ -1,0 +1,91 @@
+Para entender cómo funciona el flujo exactamente, vamos a mapear el contenido real del script de **CleanSky Energy**  hacia tu nueva base de datos modular.
+
+La clave es que el backend ya no entrega un solo "bloque" de texto, sino una **colección de fragmentos** que el frontend ensambla en el "Teleprompter" basándose en el plan que el agente seleccionó en la `agent_rates_view`.
+
+---
+
+### 1. Desglose del Script en la Base de Datos (`script_sections`)
+
+Así es como se verían los registros en tu tabla para el script de CleanSky:
+
+| section_order | section_name | target_state | target_commodity | section_text (Contenido dinámico) |
+| --- | --- | --- | --- | --- |
+| **10** | Intro | `NULL` | `NULL` | "Gracias por llamar a CTS, mi nombre es **{{agent_name}}**. Esta llamada está siendo grabada..." 
+
+ |
+| **20** | Promo Gift Card | **'PA','MA','OH'** | `NULL` | "[SÓLO PARA PA, MA Y OH] Además, podría recibir hasta $100 en tarjetas regalo..." 
+
+ |
+| **30** | Pitch Electric | `NULL` | **'Electric'** | "El plan **{{product_name}}** ofrece una tarifa fija de **{{rate}}** por **{{unit_type}}**..." 
+
+ |
+| **40** | Pitch Gas | `NULL` | **'NaturalGas'** | "Su nueva tarifa fija de gas natural será el plan **{{product_name}}** con una tarifa de **{{rate}}**..." 
+
+ |
+| **50** | Verification MI | **'MI'** | `NULL` | "Para Michigan: Una vez finalicemos esta inscripción, recibirás un correo de TPV360..." 
+
+ |
+
+---
+
+### 2. El Flujo de Ejecución (Paso a Paso)
+
+Imagina que el agente está en el Dashboard y selecciona un plan de CleanSky para un cliente en **Michigan** que quiere **Electricidad**.
+
+#### Paso A: Selección en Frontend
+
+El agente hace clic en un plan de la tabla `agent_rates_view`. El frontend obtiene los parámetros:
+
+* `provider_id`: 1 (CleanSky)
+* `state`: 'MI'
+* `commodity_type`: 'Electric'
+
+#### Paso B: Query al Backend (scripts-service)
+
+El servicio de scripts ejecuta una consulta que filtra las secciones que "califican" para ese contexto específico:
+
+```sql
+SELECT section_text FROM script_sections 
+WHERE script_id = (SELECT script_id FROM scripts WHERE provider_id = 1 AND is_active = 1)
+AND (target_state = 'MI' OR target_state IS NULL)
+AND (target_commodity = 'Electric' OR target_commodity IS NULL)
+ORDER BY section_order ASC;
+
+```
+
+#### Paso C: Inyección de Variables (El Teleprompter)
+
+El backend (o el frontend) toma el texto y reemplaza los `{{placeholders}}` con los datos reales del plan seleccionado:
+
+* `{{agent_name}}`  "Brian"
+* `{{product_name}}`  "Eco Rewards 12"
+* `{{rate}}`  "0.125"
+
+---
+
+### 3. Visualización en el Frontend (`/home/scripts`)
+
+En el editor que viste en la captura de pantalla, el flujo para el QA sería:
+
+1. 
+**Sidebar**: Selecciona "CleanSky Energy".
+
+
+2. 
+**Lista de Bloques**: Aparecen tarjetas numeradas (Intro, Promo, Pitch, etc.).
+
+
+3. 
+**Configuración de Bloque**: El QA hace clic en el bloque "Gift Card" y en el panel derecho marca: *"Mostrar solo si Estado IN (PA, MA, OH)"*.
+
+
+4. 
+**Editor de Texto**: El QA escribe el guion legal y usa un botón de "Insertar Variable" para colocar `{{rate}}` justo donde CleanSky exige que se mencione el precio.
+
+
+
+### 💡 Por qué esto es "Pro"
+
+Si mañana CleanSky decide que en **Ohio** ya no dan tarjetas de regalo, el QA entra al editor, busca ese bloque específico y cambia el filtro de `target_state` quitando 'OH'. **No hay que tocar el código**, el cambio es instantáneo para todos los agentes.
+
+**¿Te gustaría que diseñemos ahora el `Type Definition` de GraphQL para este objeto `ScriptSection`, incluyendo estos campos de `target_state` y `target_commodity`?** Con eso, el backend ya sabría qué datos enviar.
