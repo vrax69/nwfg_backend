@@ -16,12 +16,16 @@ services:
       - --check=false
       - --kafka-addr PLAINTEXT://0.0.0.0:9092
       - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+    networks:
+      - nwfg-network
 
   redis:
     image: redis:alpine
     container_name: redis_cache
     ports:
       - "6379:6379"
+    networks:
+      - nwfg-network
     restart: always
 
   users-service:
@@ -34,6 +38,8 @@ services:
       - ./env/users.env
     depends_on:
       - redpanda
+    networks:
+      - nwfg-network
     restart: always
   rates-service:
     build:
@@ -47,6 +53,8 @@ services:
     depends_on:
       - redpanda
       - redis
+    networks:
+      - nwfg-network
     restart: always
 
   upload-service:
@@ -63,3 +71,37 @@ services:
     depends_on:
       - rates-service
       - users-service
+    networks:
+      - nwfg-network
+
+  scripts-service:
+    build:
+      context: ./services/scripts-service
+    container_name: scripts-service
+    ports:
+      - "4006:4006"
+    env_file:
+      - ./env/scripts.env
+    depends_on:
+      - redis
+    networks:
+      - nwfg-network
+    restart: always
+
+  graphql-gateway:
+    build:
+      context: ./services/graphql-gateway
+    container_name: graphql-gateway
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./env/gateway.env
+    depends_on:
+      - scripts-service
+    networks:
+      - nwfg-network
+    restart: always
+
+networks:
+  nwfg-network:
+    driver: bridge

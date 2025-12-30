@@ -1,4 +1,6 @@
 const ScriptsModel = require('../models/scripts.model');
+const SectionsModel = require('../models/sections.model');
+const { masterPool } = require('../config/db');
 
 const resolvers = {
   Query: {
@@ -26,14 +28,19 @@ const resolvers = {
 
   Mutation: {
     saveSection: async (_, args) => {
-      // Aquí implementarías la lógica de INSERT o UPDATE en script_sections
-      // Y luego dispararías la Subscription para el tiempo real
-      const updatedSection = await ScriptsModel.saveOrUpdateSection(args); // Método a crear en el model
-      
-      // Notificar a los agentes en tiempo real vía PubSub
-      // pubsub.publish(`SCRIPT_UPDATED_${args.script_id}`, { scriptUpdated: ... });
-      
+      const updatedSection = await SectionsModel.saveOrUpdateSection(args);
       return updatedSection;
+    },
+
+    reorderSections: async (_, { script_id, section_ids }) => {
+      // Actualizar el orden de las secciones
+      for (let i = 0; i < section_ids.length; i++) {
+        await masterPool.query(
+          'UPDATE script_sections SET section_order = ? WHERE section_id = ? AND script_id = ?',
+          [i + 1, section_ids[i], script_id]
+        );
+      }
+      return true;
     }
   }
 };

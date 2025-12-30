@@ -1,23 +1,22 @@
 {
-  "name": "scripts-service",
+  "name": "graphql-gateway",
   "version": "1.0.0",
-  "description": "Servicio de scripts GraphQL con soporte para Apollo Federation",
+  "description": "GraphQL Gateway que unifica todos los servicios de la plataforma NWFG usando Apollo Federation",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
   "dependencies": {
-    "@apollo/subgraph": "^2.5.2",
+    "@apollo/gateway": "^2.5.2",
     "@apollo/server": "^4.9.5",
     "apollo-server-core": "^3.12.1",
     "apollo-server-express": "^3.12.1",
     "express": "^4.21.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
-    "graphql": "^16.8.1",
-    "graphql-tag": "^2.12.6",
-    "mysql2": "^3.11.0"
+    "graphql": "^16.8.1"
   }
 }
 

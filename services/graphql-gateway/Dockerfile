@@ -10,7 +10,7 @@ RUN npm install
 COPY . .
 
 # Exponer el puerto
-EXPOSE 4006
+EXPOSE 4000
 
 # Comando para iniciar el servidor
 CMD ["npm", "start"]

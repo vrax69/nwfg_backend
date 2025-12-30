@@ -1,4 +1,6 @@
 // src/models/sections.model.js
+const { masterPool } = require('../config/db');
+
 const saveOrUpdateSection = async (data) => {
     const { section_id, script_id, section_name, section_text, target_state, target_commodity, section_order, conditions } = data;
     
@@ -18,3 +20,5 @@ const saveOrUpdateSection = async (data) => {
       return { ...data, section_id: result.insertId };
     }
   };
+
+module.exports = { saveOrUpdateSection };
