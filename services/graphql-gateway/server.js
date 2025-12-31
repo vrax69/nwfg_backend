@@ -18,11 +18,11 @@ const gateway = new ApolloGateway({
         name: 'scripts',
         url: process.env.SCRIPTS_SERVICE_URL || 'http://scripts-service:4006/graphql',
       },
+      {
+        name: 'rates',
+        url: process.env.RATES_SERVICE_URL || 'http://rates-service:4002/graphql',
+      },
       // Aquí agregaremos más subgrafos cuando migremos los otros servicios
-      // {
-      //   name: 'rates',
-      //   url: process.env.RATES_SERVICE_URL || 'http://rates-service:4002/graphql',
-      // },
       // {
       //   name: 'users',
       //   url: process.env.USERS_SERVICE_URL || 'http://users-service:4001/graphql',
@@ -64,6 +64,6 @@ app.use('/graphql', expressMiddleware(server, {
 // Iniciar el servidor
 app.listen(PORT, () => {
   console.log(`🚀 GraphQL Gateway corriendo en http://localhost:${PORT}/graphql`);
-  console.log(`📊 Subgrafos configurados: scripts-service`);
+  console.log(`📊 Subgrafos configurados: scripts-service, rates-service`);
 });
 
