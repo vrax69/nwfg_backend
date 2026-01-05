@@ -9,7 +9,7 @@ const resolvers = {
       try {
         let query = `
           SELECT 
-            r.rate_id,
+            r.id as rate_id,
             r.provider_id,
             r.utility_id,
             r.product_name,
@@ -64,7 +64,7 @@ const resolvers = {
       try {
         const [rows] = await masterPool.query(
           `SELECT 
-            r.rate_id,
+            r.id as rate_id,
             r.provider_id,
             r.utility_id,
             r.product_name,
@@ -85,7 +85,7 @@ const resolvers = {
           FROM rates r
           LEFT JOIN user_data_tpv_staging.proveedores p ON r.provider_id = p.id
           LEFT JOIN utilities u ON r.utility_id = u.id
-          WHERE r.rate_id = ? AND r.validation_status = 'Validated'`,
+          WHERE r.id = ? AND r.validation_status = 'Validated'`,
           [id]
         );
         return rows[0] || null;

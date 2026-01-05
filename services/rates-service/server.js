@@ -6,6 +6,7 @@ const { expressMiddleware } = require('@apollo/server/express4');
 const { buildSubgraphSchema } = require('@apollo/subgraph');
 const { testConnections } = require('./src/config/db');
 const { connectProducer } = require('./src/config/kafka');
+const gatewayAuth = require('./src/middleware/gatewayAuth');
 
 const typeDefs = require('./src/graphql/schema');
 const resolvers = require('./src/graphql/resolvers');
@@ -25,18 +26,27 @@ async function startServer() {
   await apolloServer.start();
 
   // Montar GraphQL en la misma app Express
+  // Aplicar express.json() específicamente aquí para /graphql
+  // aunque esté aplicado globalmente, Apollo Server necesita este orden específico
   app.use(
     GRAPHQL_PATH,
-    cors(),
-    express.json(),
+    express.json({ type: 'application/json' }),
+    gatewayAuth, // Middleware para leer headers del Gateway (x-user-*)
     expressMiddleware(apolloServer, {
       context: async ({ req }) => {
-        // Pasar el token JWT si está presente
-        const token = req.headers.authorization || '';
-        return { token };
+        // El Gateway inyecta los datos del usuario mediante headers x-user-*
+        // Si estos headers están presentes, el Gateway ya validó el JWT
+        return {
+          user: req.user || null, // Contiene id, role, email, nombre desde gatewayAuth
+        };
       },
     })
   );
+
+  // 404 handler - debe ir DESPUÉS de montar GraphQL para no interceptar /graphql
+  app.use((req, res) => {
+    res.status(404).json({ message: 'Not Found' });
+  });
 
   // Iniciar el servidor Express (REST + GraphQL)
   app.listen(PORT, () => {
