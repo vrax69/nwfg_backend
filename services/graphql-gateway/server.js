@@ -42,6 +42,7 @@ const gateway = new ApolloGateway({
           request.http.headers.set('x-user-role', context.user.rol || '');
           request.http.headers.set('x-user-email', context.user.email || '');
           request.http.headers.set('x-user-nombre', context.user.nombre || '');
+          request.http.headers.set('x-user-centro-id', context.user.centro?.toString() || '');
         }
       },
     });
