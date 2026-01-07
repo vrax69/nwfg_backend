@@ -10,6 +10,21 @@ const typeDefs = gql`
     rol: String
     status: String
     centro: String
+    providerAccounts: [ProviderAccount]
+  }
+
+  type Provider {
+    id: ID!
+    codigo: String
+    nombre: String
+  }
+
+  type ProviderAccount {
+    providerId: Int
+    tpvId: String
+    tpvUsername: String
+    status: String
+    provider: Provider
   }
 
   type AuthResponse {
