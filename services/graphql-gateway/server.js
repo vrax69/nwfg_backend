@@ -70,32 +70,31 @@ app.get('/health', (req, res) => {
 // Montar GraphQL en /graphql
 app.use('/graphql', expressMiddleware(server, {
   context: async ({ req }) => {
-    // Extraer y validar el token JWT del header Authorization
+    // 1. Detectar si es una operación que DEBE ser pública
+    const operationName = req.body.operationName;
+    const queryBody = req.body.query || '';
+    const isIntrospection = operationName === 'IntrospectionQuery';
+    const isLogin = queryBody.includes('login') || operationName === 'Login';
+
     const authHeader = req.headers.authorization;
     const token = authHeader?.split(' ')[1] || '';
     
+    let user = null;
+
     if (token && process.env.JWT_SECRET) {
       try {
-        // Validar el token y decodificar los datos del usuario
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        // Retornar el usuario decodificado para que el Gateway lo pase a los subgrafos
-        return { 
-          user: {
-            id: decoded.id,
-            email: decoded.email,
-            rol: decoded.rol,
-            nombre: decoded.nombre,
-          }
-        };
+        user = jwt.verify(token, process.env.JWT_SECRET);
       } catch (error) {
-        // Token inválido o expirado, continuar sin usuario
-        console.warn('⚠️ Token inválido o expirado:', error.message);
-        return {};
+        console.warn('⚠️ Intento de acceso con token inválido');
       }
     }
+
+    // 2. Aplicar el Bloqueo: Si no hay usuario y no es una excepción, lanzar error
+    if (!user && !isLogin && !isIntrospection) {
+      throw new Error('UNAUTHENTICATED'); 
+    }
     
-    // Sin token, retornar contexto vacío (permite queries públicas)
-    return {};
+    return { user };
   },
 }));
 

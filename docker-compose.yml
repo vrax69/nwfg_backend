@@ -73,6 +73,12 @@ services:
       - users-service
     networks:
       - nwfg-network
+    restart: always # <-- AGREGA ESTO
+    healthcheck:    # <-- BUENA PRÁCTICA: Ayuda al Gateway a saber si está vivo
+      test: ["CMD", "curl", "-f", "http://localhost:4005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   scripts-service:
     build:

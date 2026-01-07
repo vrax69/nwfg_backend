@@ -1,7 +1,8 @@
 const { gql } = require('graphql-tag');
 
 const typeDefs = gql`
-  extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@external"])
+  # La URL correcta para Federation 2.0 es indispensable para que el Gateway no de errores
+  extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
 
   type Rate @key(fields: "rate_id") {
     rate_id: ID!
@@ -19,10 +20,12 @@ const typeDefs = gql`
     import_batch_id: String
     created_at: String
     updated_at: String
-    # Campos resueltos con JOINs en la query
-    provider_name: String
-    utility_name: String
-    state: String
+    
+    # Buenas Prácticas: Marcar campos que vienen de JOINs como @shareable 
+    # si otros subgrafos podrían llegar a proveer esta info en el futuro.
+    provider_name: String @shareable
+    utility_name: String @shareable
+    state: String @shareable
   }
 
   type Provider @key(fields: "id") {
@@ -44,20 +47,13 @@ const typeDefs = gql`
   }
 
   type Query {
-    # Para obtener los planes que el agente ve en la tabla
     getRates(state: String, commodity: String, provider_id: Int): [Rate]
-    # Para obtener un plan específico por ID
     getRateById(id: ID!): Rate
-    # Obtener todos los proveedores
     getProviders: [Provider]
-    # Obtener proveedor por ID
     getProviderById(id: ID!): Provider
-    # Obtener todas las utilidades
     getUtilities: [Utility]
-    # Obtener utilidad por ID
     getUtilityById(id: ID!): Utility
   }
 `;
 
 module.exports = typeDefs;
-
