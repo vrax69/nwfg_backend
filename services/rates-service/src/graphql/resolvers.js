@@ -5,53 +5,36 @@ const { masterPool } = require('../config/db');
 
 const resolvers = {
   Query: {
-    getRates: async (_, { state, commodity, provider_id }) => {
+    getRates: async (_, { state, commodity, provider_id }, context) => {
       try {
-        let query = `
-          SELECT 
-            r.id as rate_id,
-            r.provider_id,
-            r.utility_id,
-            r.product_name,
-            r.rate,
-            r.msf,
-            r.etf,
-            r.term,
-            r.customer_type,
-            r.commodity_type,
-            r.unit_type,
-            r.validation_status,
-            r.import_batch_id,
-            r.created_at,
-            r.updated_at,
-            p.nombre as provider_name,
-            u.standard_name as utility_name,
-            u.state
-          FROM rates r
-          LEFT JOIN user_data_tpv_staging.proveedores p ON r.provider_id = p.id
-          LEFT JOIN utilities u ON r.utility_id = u.id
-          WHERE r.validation_status = 'Validated'
-        `;
-        
+        // Capturamos la identidad del usuario (para logging o usos futuros)
+        // Pero NO filtramos la DB por centro porque la tabla rates no lo tiene.
+        const centroId = context.req?.headers?.['x-user-centro-id'];
+        const userId = context.req?.headers?.['x-user-id'];
+
+        // Usamos la vista 'agent_rates_view' que tiene la info unificada
+        let query = `SELECT * FROM agent_rates_view WHERE 1=1`;
         const params = [];
-        
+
         if (state) {
-          query += ' AND u.state = ?';
+          query += ' AND state = ?';
           params.push(state);
         }
-        
+
         if (commodity) {
-          query += ' AND r.commodity_type = ?';
-          params.push(commodity);
+          // Algunos sistemas usan commodity_type, otros utility_commodity en la vista
+          query += ' AND (commodity_type = ? OR utility_commodity = ?)';
+          params.push(commodity, commodity);
         }
-        
+
         if (provider_id) {
-          query += ' AND r.provider_id = ?';
+          query += ' AND provider_id = ?';
           params.push(provider_id);
         }
-        
-        query += ' ORDER BY r.created_at DESC';
-        
+
+        // Ordenamiento por novedad
+        query += ' ORDER BY created_at DESC';
+
         const [rows] = await masterPool.query(query, params);
         return rows;
       } catch (error) {

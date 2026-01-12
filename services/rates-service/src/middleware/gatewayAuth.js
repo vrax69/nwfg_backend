@@ -9,8 +9,9 @@ module.exports = (req, res, next) => {
     role: req.headers['x-user-role'] || req.headers['x-user-rol'], // Por si acaso hay variación
     email: req.headers['x-user-email'],
     nombre: req.headers['x-user-nombre'],
+    centro: req.headers['x-user-centro-id'],
   };
-  
+
   next();
 };
 

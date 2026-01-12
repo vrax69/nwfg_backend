@@ -86,6 +86,7 @@ const resolvers = {
             email: user.email,
             rol: user.rol,
             nombre: user.nombre,
+            centro: user.centro,
           },
           process.env.JWT_SECRET,
           { expiresIn: '2h' }

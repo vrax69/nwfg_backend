@@ -37,7 +37,8 @@ async function startServer() {
         // El Gateway inyecta los datos del usuario mediante headers x-user-*
         // Si estos headers están presentes, el Gateway ya validó el JWT
         return {
-          user: req.user || null, // Contiene id, role, email, nombre desde gatewayAuth
+          req, // Permite acceso directo a headers si es necesario
+          user: req.user || null, // Contiene id, role, email, nombre, centro desde gatewayAuth
         };
       },
     })
