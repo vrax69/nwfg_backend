@@ -30,8 +30,8 @@ const typeDefs = gql`
 
   type Provider @key(fields: "id") {
     id: ID!
-    nombre: String
-    codigo: String
+    nombre: String @shareable
+    codigo: String @shareable
   }
 
   type Utility @key(fields: "id") {

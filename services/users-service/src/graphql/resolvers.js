@@ -5,25 +5,26 @@ const resolvers = {
   Query: {
     me: async (_, __, context) => {
       // Intentamos obtener el ID de las tres fuentes posibles en orden de prioridad
-      const userId = 
+      const userId =
         context.user?.id ||                     // Si el middleware del subgrafo ya lo puso en context.user
         context.req?.headers?.['x-user-id'] ||  // Si viene directo del header inyectado por el Gateway
         context.req?.user?.id;                  // Fallback para otros middlewares
-      
+
       if (!userId) {
         console.warn('⚠️ No se detectó userId en el contexto de la Query "me"');
         return null;
       }
-      
+
       try {
         const [[user]] = await db.query(
-          `SELECT id, nombre, email, rol, status, centro
-           FROM usuarios WHERE id = ? AND status = 'active'`,
+          `SELECT id, nombre, email, rol as role, status, centro
+           FROM user_data_tpv_staging.usuarios
+           WHERE id = ?`,
           [userId]
         );
-        
+
         if (!user) return null;
-        
+
         // Convertir id numérico a string para GraphQL
         return {
           ...user,
@@ -38,13 +39,14 @@ const resolvers = {
     getUserById: async (_, { id }) => {
       try {
         const [[user]] = await db.query(
-          `SELECT id, nombre, email, rol, status, centro
-           FROM usuarios WHERE id = ?`,
+          `SELECT id, nombre, email, rol as role, status, centro
+           FROM user_data_tpv_staging.usuarios
+           WHERE id = ?`,
           [id]
         );
-        
+
         if (!user) return null;
-        
+
         return {
           ...user,
           id: user.id.toString(),
@@ -61,23 +63,17 @@ const resolvers = {
       try {
         const [rows] = await db.query(
           `SELECT id, nombre, email, rol, centro, password, status
-           FROM usuarios WHERE email = ? LIMIT 1`,
+           FROM user_data_tpv_staging.usuarios
+           WHERE email = ? LIMIT 1`,
           [email]
         );
 
-        if (rows.length === 0) {
-          throw new Error('Credenciales inválidas');
-        }
+        if (rows.length === 0) throw new Error('Credenciales inválidas');
 
         const user = rows[0];
 
-        if (user.status !== 'active') {
-          throw new Error('Usuario inactivo');
-        }
-
-        if (password !== user.password) {
-          throw new Error('Credenciales inválidas');
-        }
+        if (user.status !== 'active') throw new Error('Usuario inactivo');
+        if (password !== user.password) throw new Error('Credenciales inválidas');
 
         // Crear JWT
         const token = jwt.sign(
@@ -98,7 +94,7 @@ const resolvers = {
             id: user.id.toString(),
             nombre: user.nombre,
             email: user.email,
-            rol: user.rol,
+            role: user.rol,
             status: user.status,
             centro: user.centro,
           },
@@ -115,13 +111,14 @@ const resolvers = {
     __resolveReference: async (user) => {
       try {
         const [[userData]] = await db.query(
-          `SELECT id, nombre, email, rol, status, centro
-           FROM usuarios WHERE id = ?`,
+          `SELECT id, nombre, email, rol as role, status, centro
+           FROM user_data_tpv_staging.usuarios
+           WHERE id = ?`,
           [user.id]
         );
-        
+
         if (!userData) return null;
-        
+
         return {
           ...userData,
           id: userData.id.toString(),
@@ -132,40 +129,53 @@ const resolvers = {
       }
     },
 
-    providerAccounts: async (parent) => {
+    accounts: async (parent) => {
+      console.log('🔍 User.accounts resolver executed');
+      console.log('Parent object received:', JSON.stringify(parent, null, 2));
+
       try {
-        // Obtenemos cuentas del proveedor y detalles del proveedor en una sola consulta
-        const [rows] = await db.query(`
-          SELECT
-            upa.provider_id, upa.tpv_id, upa.tpv_username, upa.status,
-            p.id as prov_id, p.codigo as prov_codigo, p.nombre as prov_nombre
-          FROM user_provider_account upa
-          LEFT JOIN proveedores p ON upa.provider_id = p.id
-          WHERE upa.user_id = ?
-        `, [parent.id]);
+        console.log(`📡 Fetching accounts for user_id: ${parent.id}`);
+        const [rows] = await db.query(
+          `SELECT *
+           FROM user_data_tpv_staging.user_provider_account
+           WHERE user_id = ?`,
+          [parent.id]
+        );
 
-        return rows.map(row => {
-          const account = {
-            providerId: row.provider_id,
-            tpvId: row.tpv_id,
-            tpvUsername: row.tpv_username,
-            status: row.status,
-            provider: null
-          };
+        console.log(`✅ Accounts found for user ${parent.id}:`, rows.length);
+        console.log('Rows:', JSON.stringify(rows));
 
-          if (row.prov_id) {
-            account.provider = {
-              id: row.prov_id,
-              codigo: row.prov_codigo,
-              nombre: row.prov_nombre
-            };
-          }
-
-          return account;
-        });
+        return rows.map(row => ({
+          user_id: row.user_id,
+          provider_id: row.provider_id,
+          tpv_id: row.tpv_id,
+          tpv_username: row.tpv_username,
+          status: row.status,
+          // El campo 'provider' se resuelve en TPVAccount.provider
+        }));
       } catch (error) {
-        console.error('Error fetching providerAccounts:', error);
-        return []; // Retornar array vacío en caso de error para no romper la query completa
+        console.error('❌ Error fetching User.accounts:', error);
+        return [];
+      }
+    },
+  },
+
+  TPVAccount: {
+    provider: async (account) => {
+      try {
+        if (!account.provider_id) return null;
+
+        const [[provider]] = await db.query(
+          `SELECT *
+           FROM user_data_tpv_staging.proveedores
+           WHERE id = ?`,
+          [account.provider_id]
+        );
+
+        return provider || null;
+      } catch (error) {
+        console.error('Error fetching TPVAccount.provider:', error);
+        return null;
       }
     },
   },

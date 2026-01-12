@@ -1,48 +1,31 @@
 import { gql } from 'graphql-tag';
 
 const typeDefs = gql`
-  extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key"])
-
-  type Provider {
-    id: ID!
-    nombre: String!
-    codigo: String
-  }
-
-  type TPVAccount {
-    provider: Provider
-    tpv_id: String
-    tpv_username: String
-    tpv_password: String
-    status: String
-  }
+  extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
 
   type User @key(fields: "id") {
     id: ID!
     nombre: String
-    email: String!
-    rol: String
-    status: String
+    email: String
     centro: String
-<<<<<<< HEAD
+    role: String
+    status: String
     accounts: [TPVAccount]
-=======
-    providerAccounts: [ProviderAccount]
   }
 
-  type Provider {
-    id: ID!
-    codigo: String
-    nombre: String
-  }
-
-  type ProviderAccount {
-    providerId: Int
-    tpvId: String
-    tpvUsername: String
+  type TPVAccount {
+    user_id: ID!
+    provider_id: Int
+    tpv_id: String
+    tpv_username: String
     status: String
     provider: Provider
->>>>>>> db71ee3ac1afbc9b1a6302063960d3f3fc104852
+  }
+
+  type Provider @key(fields: "id") {
+    id: ID!
+    codigo: String @shareable
+    nombre: String @shareable
   }
 
   type AuthResponse {
@@ -61,4 +44,3 @@ const typeDefs = gql`
 `;
 
 export default typeDefs;
-
