@@ -24,7 +24,25 @@ const typeDefs = gql`
     rol: String
     status: String
     centro: String
+<<<<<<< HEAD
     accounts: [TPVAccount]
+=======
+    providerAccounts: [ProviderAccount]
+  }
+
+  type Provider {
+    id: ID!
+    codigo: String
+    nombre: String
+  }
+
+  type ProviderAccount {
+    providerId: Int
+    tpvId: String
+    tpvUsername: String
+    status: String
+    provider: Provider
+>>>>>>> db71ee3ac1afbc9b1a6302063960d3f3fc104852
   }
 
   type AuthResponse {

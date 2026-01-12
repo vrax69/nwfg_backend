@@ -131,6 +131,43 @@ const resolvers = {
         return null;
       }
     },
+
+    providerAccounts: async (parent) => {
+      try {
+        // Obtenemos cuentas del proveedor y detalles del proveedor en una sola consulta
+        const [rows] = await db.query(`
+          SELECT
+            upa.provider_id, upa.tpv_id, upa.tpv_username, upa.status,
+            p.id as prov_id, p.codigo as prov_codigo, p.nombre as prov_nombre
+          FROM user_provider_account upa
+          LEFT JOIN proveedores p ON upa.provider_id = p.id
+          WHERE upa.user_id = ?
+        `, [parent.id]);
+
+        return rows.map(row => {
+          const account = {
+            providerId: row.provider_id,
+            tpvId: row.tpv_id,
+            tpvUsername: row.tpv_username,
+            status: row.status,
+            provider: null
+          };
+
+          if (row.prov_id) {
+            account.provider = {
+              id: row.prov_id,
+              codigo: row.prov_codigo,
+              nombre: row.prov_nombre
+            };
+          }
+
+          return account;
+        });
+      } catch (error) {
+        console.error('Error fetching providerAccounts:', error);
+        return []; // Retornar array vacío en caso de error para no romper la query completa
+      }
+    },
   },
 };
 
