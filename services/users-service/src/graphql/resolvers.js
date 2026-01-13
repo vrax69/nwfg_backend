@@ -36,25 +36,39 @@ const resolvers = {
       }
     },
 
-    getUserById: async (_, { id }) => {
-      try {
-        const [[user]] = await db.query(
-          `SELECT id, nombre, email, rol as role, status, centro
-           FROM user_data_tpv_staging.usuarios
-           WHERE id = ?`,
-          [id]
-        );
+    getUserById: async (_, { id }, context) => {
+      // Obtener usuario del contexto (soporte para req.user inyectado por gatewayAuth)
+      const currentUser = context.user || context.req?.user;
 
-        if (!user) return null;
-
-        return {
-          ...user,
-          id: user.id.toString(),
-        };
-      } catch (error) {
-        console.error('Error en getUserById:', error);
-        throw new Error('Error al obtener el usuario: ' + error.message);
+      if (!currentUser || !currentUser.id) {
+        throw new Error('No tienes permisos para ver este perfil (No autenticado)');
       }
+
+      // 1. Si el que pide la info es el mismo dueño, se la damos.
+      // 2. Si el que pide es un Administrador (según tu ENUM de roles), se la damos.
+      if (String(currentUser.id) === String(id) || currentUser.role === 'Administrador') {
+        try {
+          const [[user]] = await db.query(
+            `SELECT id, nombre, email, rol as role, status, centro
+             FROM user_data_tpv_staging.usuarios
+             WHERE id = ?`,
+            [id]
+          );
+
+          if (!user) return null;
+
+          return {
+            ...user,
+            id: user.id.toString(),
+          };
+        } catch (error) {
+          console.error('Error en getUserById:', error);
+          throw new Error('Error al obtener el usuario: ' + error.message);
+        }
+      }
+
+      // 3. Si no, lanzamos un error de Prohibido
+      throw new Error('No tienes permisos para ver este perfil');
     },
   },
 
