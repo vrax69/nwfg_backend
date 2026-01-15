@@ -32,10 +32,37 @@ const uploadRates = async (req, res) => {
         // 3. Enviar los datos al Rates Service
         const token = req.headers['authorization'];
 
+        // 2.1 Procesar filas para asignar provider_id dinámicamente (Lógica Spark)
+        const processedRows = rawData.map(row => {
+            // Extraemos el estado usando el mapeo que envió el frontend
+            // mapping.state_raw contiene el nombre de la columna en el Excel donde está el estado (ej: "State")
+            const stateValue = row[mapping.state_raw];
+
+            let finalProviderId = provider_id; // Default al provider seleccionado
+
+            // REGLA DE NEGOCIO SPARK:
+            // Si el provider es Spark (8 o 9) y el estado es NJ, forzamos ID 8
+            if ((provider_id === 8 || provider_id === 9)) {
+                if (stateValue === 'NJ') {
+                    finalProviderId = 8; // Spark Auto
+                } else {
+                    finalProviderId = 9; // Spark Live (resto de estados)
+                }
+            }
+
+            // Retornamos el objeto con el ID ya corregido por fila
+            return {
+                ...row,
+                provider_id: finalProviderId
+            };
+        });
+
+        console.log(`📦 Datos procesados: ${processedRows.length} filas con provider_id asignado.`);
+
         const response = await axios.post(`${RATES_SERVICE_URL}/rates/bulk`, {
             provider_id,
             mapping,
-            rates: rawData
+            rates: processedRows
         }, {
             headers: {
                 'Authorization': token
