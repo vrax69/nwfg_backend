@@ -33,10 +33,11 @@ const uploadRates = async (req, res) => {
         const token = req.headers['authorization'];
 
         // 2.1 Procesar filas para asignar provider_id dinámicamente (Lógica Spark)
+        // 2.1 Procesar filas para asignar provider_id dinámicamente (Lógica Spark)
         const processedRows = rawData.map(row => {
             // Extraemos el estado usando el mapeo que envió el frontend
-            // mapping.state_raw contiene el nombre de la columna en el Excel donde está el estado (ej: "State")
-            const stateValue = row[mapping.state_raw];
+            const rawState = row[mapping.state_raw] || '';
+            const stateValue = rawState.toString().trim().toUpperCase(); // Limpia espacios y pasa a MAYÚSCULAS
 
             let finalProviderId = provider_id; // Default al provider seleccionado
 
@@ -45,6 +46,7 @@ const uploadRates = async (req, res) => {
             if ((provider_id === 8 || provider_id === 9)) {
                 if (stateValue === 'NJ') {
                     finalProviderId = 8; // Spark Auto
+                    // console.log(`✅ Fila detectada como NJ. Asignando Provider 8`);
                 } else {
                     finalProviderId = 9; // Spark Live (resto de estados)
                 }

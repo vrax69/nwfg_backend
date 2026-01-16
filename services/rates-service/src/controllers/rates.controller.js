@@ -21,14 +21,30 @@ const bulkInsert = async (req, res) => {
 
   try {
     // 1. VALIDACIÓN DE PROVEEDOR (Esquema: user_data_tpv_staging)
+    // Usamos el provider_id principal para validar existencia, pero permitimos multi-provider en el batch
     const [prov] = await userPool.query(
-      'SELECT id FROM user_data_tpv_staging.proveedores WHERE id = ?', 
+      'SELECT id FROM user_data_tpv_staging.proveedores WHERE id = ?',
       [provider_id]
     );
 
     if (!prov || prov.length === 0) {
       return res.status(403).json({ success: false, message: 'Proveedor no encontrado o inactivo' });
     }
+
+    // 1.1 TRUNCATE: Limpiar datos previos de los providers involucrados en este batch
+    // Detectamos los provider_id únicos que vienen en el array (o usamos el default)
+    const distinctProviderIds = [...new Set(rawRatesArray.map(r => r.provider_id || provider_id))];
+
+    if (distinctProviderIds.length > 0) {
+      const placeholders = distinctProviderIds.map(() => '?').join(',');
+      await masterPool.query(
+        `DELETE FROM rates WHERE provider_id IN (${placeholders})`,
+        distinctProviderIds
+      );
+      console.log(`🧹 Datos eliminados para providers: ${distinctProviderIds.join(', ')}`);
+    }
+
+
 
     const importBatchId = uuidv4();
     const validRates = [];
@@ -83,7 +99,7 @@ const bulkInsert = async (req, res) => {
         validRates.push({
           ...normalizedData,
           rate: finalRate,
-          provider_id,
+          provider_id: rawRate.provider_id || provider_id,
           utility_id: utilityData.id,
           commodity_type: finalCommodity,
           unit_type: finalUnit,

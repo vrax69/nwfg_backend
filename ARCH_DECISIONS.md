@@ -68,3 +68,11 @@ Funciones Clave Implementadas:
 3. Cache Busting: Invalida automáticamente la caché de Redis (live_rates_all) tras una inserción exitosa.
 
 Consecuencia: Permite a los sistemas RPA y scripts de carga procesar grandes volúmenes de datos con validación de negocio en una sola transacción HTTP, separando la lógica de "Ingeniería de Datos" de la API de consumo GraphQL del frontend.
+
+ADR 010: Arquitectura Híbrida (REST para Ingesta / GraphQL para Consulta)
+
+Contexto: El procesamiento de archivos masivos requiere validaciones complejas de negocio que no encajan bien en el modelo de ejecución de GraphQL.
+
+Decisión: La comunicación interna para cargas masivas se realiza vía REST (P2P) entre el upload-service y el rates-service usando la red interna de Docker.
+
+Consecuencia: Se mantiene el Gateway ligero y optimizado para consultas de usuario, mientras que los procesos de ingeniería de datos tienen un canal de alta velocidad dedicado.
