@@ -2,6 +2,7 @@ const RatesModel = require('../models/rates.model');
 const { resolveAlias } = require('../utils/aliasResolver');
 const { normalizeRate } = require('../utils/rateNormalizer');
 const redisClient = require('../config/redis');
+const { sendMessage } = require('../config/kafka');
 const { masterPool, userPool } = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 
@@ -50,9 +51,27 @@ const bulkInsert = async (req, res) => {
     const validRates = [];
     const pendingMapping = [];
     const unrecognizedAliases = new Set();
+    const errors = [];
+    let failedCount = 0;
 
-    for (const rawRate of rawRatesArray) {
+    // Use a loop index for error reporting
+    for (let i = 0; i < rawRatesArray.length; i++) {
+      const rawRate = rawRatesArray[i];
+      const rowNumber = i + 2; // Assuming row 1 is header
+
       const normalizedData = normalizeRate(rawRate, mapping);
+
+      // VALIDATE RATE IS NUMERIC
+      // Remove symbols and try to parse
+      const rateStr = normalizedData.rate ? normalizedData.rate.toString().replace(/[^0-9,.]/g, '').replace(',', '.') : '';
+      const testRate = parseFloat(rateStr);
+
+      if (isNaN(testRate)) {
+        failedCount++;
+        errors.push({ row: rowNumber, message: `Rate inválido: "${normalizedData.rate}"` });
+        continue; // Skip this row
+      }
+
       const utilityData = await resolveAlias(normalizedData.spl_utility_name);
 
       if (utilityData && utilityData.id) {
@@ -60,9 +79,7 @@ const bulkInsert = async (req, res) => {
         let finalUnit = 'KWH';
 
         // Limpieza y normalización del precio (manejo de comas y símbolos)
-        const rateValue = parseFloat(
-          normalizedData.rate.toString().replace(/[^0-9,.]/g, '').replace(',', '.')
-        );
+        const rateValue = testRate; // Already parsed above
 
         // 2. LÓGICA DE UNIDADES DUALES Y COMMODITY
         // Si la utilidad ofrece ambos (Both), el precio desempata el commodity
@@ -114,15 +131,60 @@ const bulkInsert = async (req, res) => {
     }
 
     // Inserción masiva final
+    let insertedCount = 0;
     if (validRates.length > 0) {
-      await RatesModel.bulkInsert(validRates);
-      // Opcional: Notificar a través de Redis o Kafka que hay nuevos datos
+      insertedCount = await RatesModel.bulkInsert(validRates);
+
+      // 2. Bust Cache (Redis)
       await redisClient.del('live_rates_all');
+      console.log("🧹 Caché de Redis invalidada tras carga masiva");
+
+      // 3. Evento (Redpanda/Kafka)
+      const kafkaMsg = {
+        type: "BULK_UPLOAD_COMPLETED",
+        provider_id: distinctProviderIds,
+        timestamp: new Date().toISOString(),
+        inserted: insertedCount,
+        failed: failedCount
+      };
+      await sendMessage('rates.events', kafkaMsg);
+
+      // 4. Audit Log (import_logs)
+      try {
+        // Create table if not exists (Basic Safety)
+        await masterPool.query(`
+            CREATE TABLE IF NOT EXISTS import_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                provider_id INT,
+                user_id INT,
+                details JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+         `);
+
+        await masterPool.query(
+          'INSERT INTO import_logs (provider_id, user_id, details) VALUES (?, ?, ?)',
+          [
+            provider_id,
+            req.user ? req.user.id : null,
+            JSON.stringify({
+              inserted: insertedCount,
+              failed: failedCount,
+              pending: pendingMapping.length,
+              batchId: importBatchId
+            })
+          ]
+        );
+      } catch (logErr) {
+        console.error("⚠ Warning: Could not write to import_logs:", logErr.message);
+      }
     }
 
     return res.status(201).json({
       success: true,
-      inserted: validRates.length,
+      insertedCount: insertedCount,
+      failedCount: failedCount,
+      errors: errors,
       pending: pendingMapping.length,
       missingAliases: Array.from(unrecognizedAliases)
     });

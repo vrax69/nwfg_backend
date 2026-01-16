@@ -79,6 +79,12 @@ const uploadRates = async (req, res) => {
         const status = error.response ? error.response.status : 500;
         const message = error.response ? error.response.data : 'Internal Server Error';
         return res.status(status).json(message);
+    } finally {
+        // Limpieza de memoria (Buffer de archivo)
+        if (req.file) {
+            req.file.buffer = null;
+            req.file = null;
+        }
     }
 };
 
