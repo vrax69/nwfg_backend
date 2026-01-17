@@ -76,3 +76,9 @@ Contexto: El procesamiento de archivos masivos requiere validaciones complejas d
 Decisión: La comunicación interna para cargas masivas se realiza vía REST (P2P) entre el upload-service y el rates-service usando la red interna de Docker.
 
 Consecuencia: Se mantiene el Gateway ligero y optimizado para consultas de usuario, mientras que los procesos de ingeniería de datos tienen un canal de alta velocidad dedicado.
+
+ADR 011: Observabilidad y Auditoría Post-Ingesta
+
+Decisión: Cada proceso de Bulk genera un rastro en import_logs y un evento en Redpanda.
+
+Beneficio: Permite depurar errores de carga sin revisar archivos de texto y prepara el sistema para notificaciones en tiempo real en el frontend.

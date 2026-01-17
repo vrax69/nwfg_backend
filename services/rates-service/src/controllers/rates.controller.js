@@ -140,14 +140,19 @@ const bulkInsert = async (req, res) => {
       console.log("🧹 Caché de Redis invalidada tras carga masiva");
 
       // 3. Evento (Redpanda/Kafka)
-      const kafkaMsg = {
-        type: "BULK_UPLOAD_COMPLETED",
-        provider_id: distinctProviderIds,
-        timestamp: new Date().toISOString(),
-        inserted: insertedCount,
-        failed: failedCount
-      };
-      await sendMessage('rates.events', kafkaMsg);
+      try {
+        const kafkaMsg = {
+          type: "BULK_UPLOAD_COMPLETED",
+          provider_id: distinctProviderIds,
+          timestamp: new Date().toISOString(),
+          inserted: insertedCount,
+          failed: failedCount
+        };
+        await sendMessage('rates.events', kafkaMsg);
+        console.log("📢 Evento enviado a Redpanda con éxito");
+      } catch (kafkaError) {
+        console.error("❌ Error enviando a Kafka:", kafkaError);
+      }
 
       // 4. Audit Log (import_logs)
       try {
