@@ -3,8 +3,14 @@ import cors from 'cors';
 import { ApolloGateway, IntrospectAndCompose, RemoteGraphQLDataSource } from '@apollo/gateway';
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/lib/use/ws';
+import { makeExecutableSchema } from '@graphql-tools/schema';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import { connectConsumer } from './kafka.js';
+import { pubsub } from './pubsub.js';
 
 dotenv.config();
 
@@ -49,11 +55,60 @@ const gateway = new ApolloGateway({
   },
 });
 
+// Definición del esquema LOCAL para Suscripciones (se "mezcla" visualmente para el cliente)
+const subscriptionTypeDefs = `
+  type Subscription {
+    rateUpdated: RateBulkNotification
+  }
+
+  type RateBulkNotification {
+    type: String
+    insertedCount: Int
+    provider_id: [Int]
+    timestamp: String
+  }
+`;
+
+const subscriptionResolvers = {
+  Subscription: {
+    rateUpdated: {
+      subscribe: () => pubsub.asyncIterator(['RATE_UPDATED']),
+    },
+  },
+};
+
+const subscriptionSchema = makeExecutableSchema({
+  typeDefs: subscriptionTypeDefs,
+  resolvers: subscriptionResolvers,
+});
+
+// Crear httpServer explícitamente para compartirlo con WS y Express
+const httpServer = createServer(app);
+
+// Configurar WebSocket Server para Subscriptions
+const wsServer = new WebSocketServer({
+  server: httpServer,
+  path: '/graphql',
+});
+
+// Activar el servidor de suscripciones
+const serverCleanup = useServer({ schema: subscriptionSchema }, wsServer);
+
 // Crear el servidor Apollo con el Gateway
 const server = new ApolloServer({
   gateway,
-  // Habilitar introspection y playground en desarrollo
   introspection: process.env.NODE_ENV !== 'production',
+  plugins: [
+    {
+      async serverWillStart() {
+        return {
+          async drainServer() {
+            await serverCleanup.dispose();
+          },
+        };
+      },
+    },
+  ],
 });
 
 // Inicializar el servidor
@@ -79,7 +134,7 @@ app.use('/graphql', expressMiddleware(server, {
 
     const authHeader = req.headers.authorization;
     const token = authHeader?.split(' ')[1] || '';
-    
+
     let user = null;
 
     if (token && process.env.JWT_SECRET) {
@@ -92,16 +147,19 @@ app.use('/graphql', expressMiddleware(server, {
 
     // 2. Aplicar el Bloqueo: Si no hay usuario y no es una excepción, lanzar error
     if (!user && !isLogin && !isIntrospection) {
-      throw new Error('UNAUTHENTICATED'); 
+      throw new Error('UNAUTHENTICATED');
     }
-    
+
     return { user };
   },
 }));
 
-// Iniciar el servidor
-app.listen(PORT, () => {
+// Iniciar el servidor HTTP
+httpServer.listen(PORT, async () => {
   console.log(`🚀 GraphQL Gateway corriendo en http://localhost:${PORT}/graphql`);
   console.log(`📊 Subgrafos configurados: users-service, scripts-service, rates-service`);
+
+  // Conectar Consumidor de Kafka
+  await connectConsumer();
 });
 
