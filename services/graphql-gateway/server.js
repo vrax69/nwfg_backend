@@ -92,7 +92,18 @@ const wsServer = new WebSocketServer({
 });
 
 // Activar el servidor de suscripciones
-const serverCleanup = useServer({ schema: subscriptionSchema }, wsServer);
+const serverCleanup = useServer({
+  schema: subscriptionSchema,
+  onConnect: (ctx) => {
+    console.log('🔌 Cliente WebSocket conectado');
+  },
+  onDisconnect: (ctx) => {
+    console.log('🔌 Cliente WebSocket desconectado');
+  },
+  onError: (ctx, msg, errors) => {
+    console.error('❌ Error WebSocket:', JSON.stringify(errors));
+  }
+}, wsServer);
 
 // Crear el servidor Apollo con el Gateway
 const server = new ApolloServer({
@@ -146,7 +157,12 @@ app.use('/graphql', expressMiddleware(server, {
     }
 
     // 2. Aplicar el Bloqueo: Si no hay usuario y no es una excepción, lanzar error
+    // 2. Aplicar el Bloqueo: Si no hay usuario y no es una excepción, lanzar error
     if (!user && !isLogin && !isIntrospection) {
+      // Permitir paso si es WebSocket handshake (a veces req.method es GET pero headers upgrade)
+      if (req.headers && req.headers.upgrade === 'websocket') {
+        return { user: null }; // Permitir handshake anónimo por ahora
+      }
       throw new Error('UNAUTHENTICATED');
     }
 
