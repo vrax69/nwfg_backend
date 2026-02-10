@@ -56,10 +56,10 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${DB_NAME:-nwfg_platform}
-      MYSQL_USER: ${DB_USER:-admin}
-      MYSQL_PASSWORD: ${DB_PASS:-admin}
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: nwfg_db
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
     volumes:
       - ./infrastructure/mysql:/docker-entrypoint-initdb.d
       - mysql_data:/var/lib/mysql
@@ -112,27 +112,6 @@ services:
     volumes:
       - ./services/users-service/src:/app/src
       - ./services/users-service/package.json:/app/package.json
-
-  frontend:
-    build:
-      context: ./services/frontend
-      dockerfile: Dockerfile
-    container_name: frontend
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      - NODE_ENV=development
-    depends_on:
-      - rates-service
-      - users-service
-    networks:
-      - nwfg-network
-    volumes:
-      - ./services/frontend/src:/app/src
-      - ./services/frontend/public:/app/public
-      - ./services/frontend/package.json:/app/package.json
 
 networks:
   nwfg-network:
