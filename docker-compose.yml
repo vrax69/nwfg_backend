@@ -1,4 +1,7 @@
+version: '3.8'
+
 services:
+  # Base Services
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     container_name: redpanda
@@ -18,6 +21,11 @@ services:
       - --advertise-kafka-addr PLAINTEXT://redpanda:9092
     networks:
       - nwfg-network
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redpanda-console:
     image: docker.redpanda.com/redpandadata/console:latest
@@ -29,7 +37,8 @@ services:
     environment:
       KAFKA_BROKERS: "redpanda:9092"
     depends_on:
-      - redpanda
+      redpanda:
+        condition: service_healthy
 
   redis:
     image: redis:alpine
@@ -40,86 +49,100 @@ services:
       - nwfg-network
     restart: always
 
-  users-service:
-    build:
-      context: ./services/users-service
-    container_name: users-service
+  # Database
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_db
     ports:
-      - "4001:4001"
-    env_file:
-      - ./env/users.env
-    depends_on:
-      - redpanda
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-nwfg_platform}
+      MYSQL_USER: ${DB_USER:-admin}
+      MYSQL_PASSWORD: ${DB_PASS:-admin}
+    volumes:
+      - ./infrastructure/mysql:/docker-entrypoint-initdb.d
+      - mysql_data:/var/lib/mysql
     networks:
       - nwfg-network
-    restart: always
-  rates-service:
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Application Services
+  server-rates:
     build:
-      context: ./services/rates-service
+      context: ./services/server-rates
       dockerfile: Dockerfile
-    container_name: rates-service
+    container_name: server-rates
     ports:
       - "4002:4002"
     env_file:
-      - ./env/rates.env
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=4002
+      - DB_HOST=mysql
     depends_on:
-      - redpanda
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - nwfg-network
-    restart: always
-
-  upload-service:
-    build:
-      context: ./services/upload-service
-    container_name: upload-service
-    ports:
-      - "4005:4005"
-    env_file:
-      - ./env/upload.env # <--- Apuntando a la carpeta central
     volumes:
-      - ./services/upload-service:/app
-      - /app/node_modules
-    depends_on:
-      - rates-service
-      - users-service
-    networks:
-      - nwfg-network
-    restart: always # <-- AGREGA ESTO
-    healthcheck:    # <-- BUENA PRÁCTICA: Ayuda al Gateway a saber si está vivo
-      test: ["CMD", "curl", "-f", "http://localhost:4005/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - ./services/server-rates/src:/app/src
+      - ./services/server-rates/package.json:/app/package.json
 
-  scripts-service:
+  user-auth:
     build:
-      context: ./services/scripts-service
-    container_name: scripts-service
+      context: ./services/user-auth
+      dockerfile: Dockerfile
+    container_name: user-auth
     ports:
-      - "4006:4006"
+      - "4001:4001"
     env_file:
-      - ./env/scripts.env
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=4001
+      - DB_HOST=mysql
     depends_on:
-      - redis
+      mysql:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
     networks:
       - nwfg-network
-    restart: always
+    volumes:
+      - ./services/user-auth/src:/app/src
+      - ./services/user-auth/package.json:/app/package.json
 
-  graphql-gateway:
+  frontend:
     build:
-      context: ./services/graphql-gateway
-    container_name: graphql-gateway
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    container_name: frontend
     ports:
-      - "4000:4000"
+      - "3000:3000"
     env_file:
-      - ./env/gateway.env
+      - .env
+    environment:
+      - NODE_ENV=development
     depends_on:
-      - scripts-service
+      - server-rates
+      - user-auth
     networks:
       - nwfg-network
-    restart: always
+    volumes:
+      - ./services/frontend/src:/app/src
+      - ./services/frontend/public:/app/public
+      - ./services/frontend/package.json:/app/package.json
 
 networks:
   nwfg-network:
     driver: bridge
+
+volumes:
+  mysql_data:
