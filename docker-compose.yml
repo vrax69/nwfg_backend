@@ -22,7 +22,7 @@ services:
     networks:
       - nwfg-network
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health"]
+      test: [ "CMD-SHELL", "rpk cluster health" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -66,16 +66,16 @@ services:
     networks:
       - nwfg-network
     healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
       timeout: 20s
       retries: 10
 
   # Application Services
-  server-rates:
+  rates-service:
     build:
-      context: ./services/server-rates
+      context: ./services/rates-service
       dockerfile: Dockerfile
-    container_name: server-rates
+    container_name: rates-service
     ports:
       - "4002:4002"
     env_file:
@@ -92,14 +92,14 @@ services:
     networks:
       - nwfg-network
     volumes:
-      - ./services/server-rates/src:/app/src
-      - ./services/server-rates/package.json:/app/package.json
+      - ./services/rates-service/src:/app/src
+      - ./services/rates-service/package.json:/app/package.json
 
-  user-auth:
+  users-service:
     build:
-      context: ./services/user-auth
+      context: ./services/users-service
       dockerfile: Dockerfile
-    container_name: user-auth
+    container_name: users-service
     ports:
       - "4001:4001"
     env_file:
@@ -116,8 +116,8 @@ services:
     networks:
       - nwfg-network
     volumes:
-      - ./services/user-auth/src:/app/src
-      - ./services/user-auth/package.json:/app/package.json
+      - ./services/users-service/src:/app/src
+      - ./services/users-service/package.json:/app/package.json
 
   frontend:
     build:
@@ -131,8 +131,8 @@ services:
     environment:
       - NODE_ENV=development
     depends_on:
-      - server-rates
-      - user-auth
+      - rates-service
+      - users-service
     networks:
       - nwfg-network
     volumes:
