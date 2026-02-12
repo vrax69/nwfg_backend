@@ -26,10 +26,6 @@ const gateway = new ApolloGateway({
         url: process.env.USERS_SERVICE_URL || 'http://users-service:4001/graphql',
       },
       {
-        name: 'scripts',
-        url: process.env.SCRIPTS_SERVICE_URL || 'http://scripts-service:4006/graphql',
-      },
-      {
         name: 'rates',
         url: process.env.RATES_SERVICE_URL || 'http://rates-service:4002/graphql',
       },

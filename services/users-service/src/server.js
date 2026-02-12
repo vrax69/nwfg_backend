@@ -58,7 +58,7 @@ async function startServer() {
       res.status(404).json({ message: "Not Found" });
     });
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Users-service corriendo en puerto ${PORT}`);
       console.log(`📊 REST API disponible en http://localhost:${PORT}`);
       console.log(`🔷 GraphQL Subgraph disponible en http://localhost:${PORT}${GRAPHQL_PATH}`);

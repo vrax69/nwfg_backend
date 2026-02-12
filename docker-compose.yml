@@ -117,6 +117,32 @@ services:
       - ./services/users-service/src:/app/src
       - ./services/users-service/package.json:/app/package.json
 
+  graphql-gateway:
+    build:
+      context: ./services/graphql-gateway
+      dockerfile: Dockerfile
+    container_name: graphql-gateway
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - USERS_SERVICE_URL=http://users-service:4001/graphql
+      - RATES_SERVICE_URL=http://rates-service:4002/graphql
+      - JWT_SECRET=NwfgMasterSecret2025!!
+      # - SCRIPTS_SERVICE_URL=http://scripts-service:4006/graphql 
+    depends_on:
+      users-service:
+        condition: service_started
+      rates-service:
+        condition: service_started
+      redpanda:
+        condition: service_healthy
+    networks:
+      - nwfg-network
+    volumes:
+      - ./services/graphql-gateway/server.js:/app/server.js
+      - ./services/graphql-gateway/package.json:/app/package.json
+
 networks:
   nwfg-network:
     driver: bridge

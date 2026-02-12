@@ -7,6 +7,27 @@ class RateModel {
     return rows[0];
   }
 
+  static async findAll() {
+    console.log("RatesModel.findAll: Called");
+    try {
+      const [rows] = await db.execute(`
+            SELECT 
+                id,
+                rate_value as Rate,
+                term as duracion_rate,
+                status as State,
+                commodity as Service_Type,
+                provider_id 
+            FROM rates
+        `);
+      console.log("RatesModel.findAll: Success, rows:", rows?.length);
+      return rows;
+    } catch (error) {
+      console.error("RatesModel.findAll: ERROR", error);
+      throw error;
+    }
+  }
+
   // Para ADR 007: Lógica de Ingesta Masiva
   static async bulkInsert(rates) {
     const connection = await db.getConnection();

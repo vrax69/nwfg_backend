@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { buildSubgraphSchema } = require('@apollo/subgraph');
 const { ApolloServer } = require('apollo-server-express');
 const db = require('./config/db'); // Importamos para probar conexión al inicio
 
@@ -35,8 +36,7 @@ async function startServer() {
     // 2. CAPA DE NEGOCIO (Solo GraphQL)
     // ---------------------------------------------------------
     const server = new ApolloServer({
-        typeDefs,
-        resolvers,
+        schema: buildSubgraphSchema({ typeDefs, resolvers }),
         context: ({ req }) => ({ req }) // Contexto para Auth futura
     });
 

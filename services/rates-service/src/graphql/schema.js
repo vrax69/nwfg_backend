@@ -1,6 +1,8 @@
 const { gql } = require('apollo-server-express');
 
 const typeDefs = gql`
+  extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
+
   # Definimos el tipo Tarifa
   type Rate {
     id: ID!
@@ -14,6 +16,12 @@ const typeDefs = gql`
     Service_Type: String
     Logo_URL: String
     SPL: String
+    provider: Provider # Relación con el Proveedor
+  }
+
+  type Provider @key(fields: "id") {
+    id: ID!
+    logo_url: String
   }
 
   type Query {
