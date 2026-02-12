@@ -80,9 +80,13 @@ services:
       - "4002:4002"
     env_file:
       - ./env/rates.env # <--- Usando tu archivo de variables específico
+    environment:
+      - KAFKA_BROKER=redpanda:9092
     depends_on:
       mysql:
         condition: service_healthy
+      redpanda:
+        condition: service_healthy # Añadido para evitar errores de conexión al arranque
     networks:
       - nwfg-network
     volumes:
