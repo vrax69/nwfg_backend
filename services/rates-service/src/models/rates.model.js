@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const pubsub = require('../config/pubsub');
 
 class RateModel {
   // Para ADR 006: Resolución de entidades federadas
@@ -7,26 +8,71 @@ class RateModel {
     return rows[0];
   }
 
-  static async findAll() {
-    console.log("RatesModel.findAll: Called");
-    try {
-      const [rows] = await db.execute(`
-            SELECT 
-                r.id,
-                r.rate_value as Rate,
-                r.term as duracion_rate,
-                r.status as State,
-                r.commodity as Service_Type,
-                r.provider_id,
-                r.attributes -- JSON Field
-            FROM rates r
-        `);
-      console.log("RatesModel.findAll: Success, rows:", rows?.length);
-      return rows;
-    } catch (error) {
-      console.error("RatesModel.findAll: ERROR", error);
-      throw error;
+  // ADR: findMarketStructure para el Grid del Frontend
+  // ADR: findMarketStructure para el Grid del Frontend
+  static async findMarketStructure(includeDrafts = false) {
+    // Agrupamos por Estado (desde attributes.State) y Utility
+    // Nota: Asumimos que 'State' está dentro del JSON attributes
+
+    const statusCondition = includeDrafts
+      ? "(status = 'active' OR status = 'draft')"
+      : "status = 'active'";
+
+    const query = `
+        SELECT 
+            JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.State')) as state_code,
+            JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.raw_utility_name')) as utility_name,
+            commodity,
+            COUNT(*) as rate_count
+        FROM rates
+        WHERE ${statusCondition}
+        GROUP BY state_code, utility_name, commodity
+        HAVING state_code IS NOT NULL
+        ORDER BY state_code, utility_name;
+    `;
+
+    const [rows] = await db.query(query);
+    return rows;
+  }
+
+  static async findAll({ provider_id, state, utilityId, includeDrafts = false } = {}) {
+    let query = 'SELECT * FROM rates WHERE 1=1';
+    const params = [];
+
+    if (!includeDrafts) {
+      query += " AND status = 'active'";
+    } else {
+      // If includeDrafts is true, we want both active and draft, so no status filter needed 
+      // OR we can explicitly say "status IN ('active', 'draft')" if there are other statuses like 'archived'
+      query += " AND status IN ('active', 'draft')";
     }
+
+    if (provider_id) {
+      query += ' AND provider_id = ?';
+      params.push(provider_id);
+    }
+
+    if (state) {
+      // Filtrar por Estado dentro del JSON attributes
+      query += " AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.State')) = ?";
+      params.push(state);
+    }
+
+    // Nota sobre utilityId:
+    // Aunque en el ExcelService parseamos 'utility_id: null', es posible que en el futuro
+    // mapeemos esto a la columna real 'utility_id' o filtremos por nombre en el JSON.
+    // Por ahora, para ser consistente con el grid, filtraremos por 'raw_utility_name' si se pasa utilityId como string (nombre).
+    /* 
+    if (utilityId) {
+         // Si utilityId es un ID numérico, usar columna. Si es nombre, usar JSON.
+         // Asumimos nombre por ahora dada la estructura de marketStructure
+         query += " AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.raw_utility_name')) = ?";
+         params.push(utilityId);
+    }
+    */
+
+    const [rows] = await db.query(query, params);
+    return rows;
   }
 
   // Para ADR 007: Lógica de Ingesta Masiva
@@ -52,7 +98,7 @@ class RateModel {
         const attributesJson = JSON.stringify(rate.attributes || {});
 
         await connection.execute(query, [
-          rate.provider_id, // Usamos el provider_id de la fila (ya corregido por upload-service)
+          String(providerId), // Asegurar consistencia
           rate.utility_id,
           rate.commodity,
           rate.rate_value,
@@ -60,7 +106,18 @@ class RateModel {
           attributesJson
         ]);
       }
+
       await connection.commit();
+
+      // Publish Event (Fire and Forget)
+      pubsub.publish('RATE_UPDATED', {
+        ratesUpdated: {
+          provider_id: providerId,
+          count: rates.length,
+          timestamp: new Date().toISOString()
+        }
+      }).catch(err => console.error('❌ PubSub Error:', err));
+
       return { success: true, count: rates.length };
     } catch (error) {
       await connection.rollback();

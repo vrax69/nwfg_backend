@@ -48,7 +48,7 @@ async function startServer() {
         context: async ({ req }) => {
           // Los headers x-user-* vienen del Gateway y se extraen en gatewayAuth
           // req.user contiene id, role, email, nombre
-          return { req };
+          return { user: req.user };
         },
       })
     );

@@ -58,9 +58,8 @@ const subscriptionTypeDefs = `
   }
 
   type RateBulkNotification {
-    type: String
-    insertedCount: Int
-    provider_id: [Int]
+    provider_id: ID
+    count: Int
     timestamp: String
   }
 `;

@@ -27,9 +27,34 @@ const typeDefs = gql`
     logo_url: String
   }
 
+  type Utility {
+    id: ID!
+    name: String
+    serviceType: String
+    rateCount: Int
+  }
+
+  type State {
+    code: String!
+    utilities: [Utility]
+  }
+
   type Query {
-    # La única forma de pedir datos de negocio
-    getRates: [Rate]
+    # Filtros dinámicos para el grid
+    getRates(provider_id: ID, state: String, utilityId: ID): [Rate]
+    
+    # Estructura del mercado (Metadata para el Grid)
+    getMarketStructure: [State]
+  }
+
+  extend type Subscription {
+    ratesUpdated: RateBulkNotification
+  }
+
+  type RateBulkNotification {
+    provider_id: ID
+    count: Int
+    timestamp: String
   }
 `;
 

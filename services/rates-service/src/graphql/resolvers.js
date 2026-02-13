@@ -1,19 +1,64 @@
 const RatesModel = require('../models/rates.model');
 const { GraphQLJSON } = require('graphql-type-json');
+const pubsub = require('../config/pubsub');
 
 const resolvers = {
   JSON: GraphQLJSON,
+  Subscription: {
+    ratesUpdated: {
+      subscribe: () => pubsub.asyncIterator(['RATE_UPDATED'])
+    }
+  },
   Query: {
-    getRates: async () => {
-      try {
-        // El resolver delega al Modelo. No escribe SQL aquí.
-        const rates = await RatesModel.findAll();
-        // console.log("Resolving rates:", rates?.length);
-        return rates;
-      } catch (error) {
-        console.error("Error en resolver getRates:", error);
-        throw new Error("Error fetching rates");
-      }
+    // Query principal con filtros
+    getRates: async (_, { provider_id, state, utilityId }, context) => {
+      const userRole = context.req.headers['x-user-role'];
+      const includeDrafts = userRole === 'ADMIN' || userRole === 'QA';
+      return await RatesModel.findAll({ provider_id, state, utilityId, includeDrafts });
+    },
+
+    // Nueva Query: Estructura del Mercado (Grid)
+    getMarketStructure: async (_, __, context) => {
+      const userRole = context.req.headers['x-user-role'];
+      const includeDrafts = userRole === 'ADMIN' || userRole === 'QA';
+      const rows = await RatesModel.findMarketStructure(includeDrafts);
+
+      // Transformar filas planas (state_code, utility_name, rate_count)
+      // a estructura jerárquica [State] -> [Utility]
+      const statesMap = {};
+
+      rows.forEach(row => {
+        if (!statesMap[row.state_code]) {
+          statesMap[row.state_code] = {
+            code: row.state_code,
+            utilitiesMap: {} // Map temporal para agrupar utilidades
+          };
+        }
+
+        const stateEntry = statesMap[row.state_code];
+        const utilKey = row.utility_name;
+
+        if (!stateEntry.utilitiesMap[utilKey]) {
+          stateEntry.utilitiesMap[utilKey] = {
+            id: utilKey, // Usamos nombre como ID temporal
+            name: utilKey,
+            serviceType: row.commodity, // Puede sobreescribirse si hay varios
+            rateCount: 0
+          };
+        }
+
+        stateEntry.utilitiesMap[utilKey].rateCount += row.rate_count;
+      });
+
+      // Convertir Map a Array ordenado
+      return Object.values(statesMap).map(state => ({
+        code: state.code,
+        utilities: Object.values(state.utilitiesMap)
+      }));
+    },
+
+    getRate: async (_, { id }) => {
+      return await RatesModel.getById(id);
     }
   },
 

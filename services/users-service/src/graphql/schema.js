@@ -3,14 +3,29 @@ import { gql } from 'graphql-tag';
 const typeDefs = gql`
   extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
 
+  enum Role {
+    ADMIN
+    QA
+    AGENT
+  }
+
+  type ProviderCredential {
+    id: ID!
+    provider_id: Int!
+    portal_username: String
+    portal_password: String
+    tpv_id: String
+  }
+
   type User @key(fields: "id") {
     id: ID!
     nombre: String
     email: String
-    centro: String
-    role: String
+    centro: String # NWFG, FIS
+    role: Role
     status: String
     accounts: [TPVAccount]
+    credentials: [ProviderCredential]
   }
 
   type TPVAccount {
@@ -40,6 +55,7 @@ const typeDefs = gql`
 
   type Mutation {
     login(email: String!, password: String!): AuthResponse!
+    updateProviderCredential(providerId: ID!, portalUser: String, portalPass: String, tpvId: String): User
   }
 `;
 
