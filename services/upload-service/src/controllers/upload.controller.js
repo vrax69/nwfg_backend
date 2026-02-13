@@ -1,4 +1,4 @@
-const xlsx = require('xlsx');
+const ExcelService = require('../services/excel.service');
 const axios = require('axios');
 require('dotenv').config();
 
@@ -10,81 +10,44 @@ const uploadRates = async (req, res) => {
             return res.status(400).json({ success: false, message: 'No file uploaded' });
         }
 
-        // 1. Extraer los metadatos (provider_id y mapping) enviados junto al archivo
-        // Nota: En Multer, los campos de texto vienen en req.body
+        // 1. Metadata
+        // Expected: jsonData = { provider_id: 1, commodity_type: 'ELECTRIC' }
         const metadata = req.body.jsonData ? JSON.parse(req.body.jsonData) : {};
-        const { provider_id, mapping } = metadata;
+        const { provider_id, commodity_type = 'ELECTRIC' } = metadata;
 
-        if (!provider_id || !mapping) {
-            return res.status(400).json({ success: false, message: 'provider_id and mapping are required in jsonData' });
+        if (!provider_id) {
+            return res.status(400).json({ success: false, message: 'provider_id is required in jsonData' });
         }
 
-        // 2. Parsear el Excel desde el buffer de memoria
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0]; // Tomamos la primera hoja
-        const sheet = workbook.Sheets[sheetName];
+        console.log(`🚀 Uploading for Provider: ${provider_id}, Commodity: ${commodity_type}`);
 
-        // Convertir a JSON plano
-        const rawData = xlsx.utils.sheet_to_json(sheet);
+        // 2. Parse & Normalize with ExcelService
+        const processedRates = ExcelService.parseRates(req.file.buffer, {
+            provider_id: parseInt(provider_id),
+            commodity_type
+        });
 
-        console.log(`📦 Archivo parseado: ${rawData.length} filas detectadas.`);
+        console.log(`📦 Processed ${processedRates.length} rates.`);
+        // console.log('Sample:', processedRates[0]);
 
-        // 3. Enviar los datos al Rates Service
+        // 3. Send to Rates Service
+        // Note: Rates Service bulkInsert needs to handle the new structure (attributes, etc.)
         const token = req.headers['authorization'];
 
-        // 2.1 Procesar filas para asignar provider_id dinámicamente (Lógica Spark)
-        // 2.1 Procesar filas para asignar provider_id dinámicamente (Lógica Spark)
-        const processedRows = rawData.map(row => {
-            // Extraemos el estado usando el mapeo que envió el frontend
-            const rawState = row[mapping.state_raw] || '';
-            const stateValue = rawState.toString().trim().toUpperCase(); // Limpia espacios y pasa a MAYÚSCULAS
-
-            let finalProviderId = provider_id; // Default al provider seleccionado
-
-            // REGLA DE NEGOCIO SPARK:
-            // Si el provider es Spark (8 o 9) y el estado es NJ, forzamos ID 8
-            if ((provider_id === 8 || provider_id === 9)) {
-                if (stateValue === 'NJ') {
-                    finalProviderId = 8; // Spark Auto
-                    // console.log(`✅ Fila detectada como NJ. Asignando Provider 8`);
-                } else {
-                    finalProviderId = 9; // Spark Live (resto de estados)
-                }
-            }
-
-            // Retornamos el objeto con el ID ya corregido por fila
-            return {
-                ...row,
-                provider_id: finalProviderId
-            };
-        });
-
-        console.log(`📦 Datos procesados: ${processedRows.length} filas con provider_id asignado.`);
-
         const response = await axios.post(`${RATES_SERVICE_URL}/rates/bulk`, {
-            provider_id,
-            mapping,
-            rates: processedRows
+            provider_id: parseInt(provider_id), // Scope for deletion
+            rates: processedRates
         }, {
-            headers: {
-                'Authorization': token
-            }
+            headers: { 'Authorization': token }
         });
 
-        // 4. Retornar la respuesta del Rates Service al cliente (Yaak/Frontend)
         return res.status(response.status).json(response.data);
 
     } catch (error) {
         console.error('❌ Error en Upload Service:', error.message);
         const status = error.response ? error.response.status : 500;
-        const message = error.response ? error.response.data : 'Internal Server Error';
+        const message = error.response ? error.response.data : ('Internal Error: ' + error.message);
         return res.status(status).json(message);
-    } finally {
-        // Limpieza de memoria (Buffer de archivo)
-        if (req.file) {
-            req.file.buffer = null;
-            req.file = null;
-        }
     }
 };
 

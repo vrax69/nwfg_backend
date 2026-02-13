@@ -12,13 +12,14 @@ class RateModel {
     try {
       const [rows] = await db.execute(`
             SELECT 
-                id,
-                rate_value as Rate,
-                term as duracion_rate,
-                status as State,
-                commodity as Service_Type,
-                provider_id 
-            FROM rates
+                r.id,
+                r.rate_value as Rate,
+                r.term as duracion_rate,
+                r.status as State,
+                r.commodity as Service_Type,
+                r.provider_id,
+                r.attributes -- JSON Field
+            FROM rates r
         `);
       console.log("RatesModel.findAll: Success, rows:", rows?.length);
       return rows;
@@ -29,14 +30,35 @@ class RateModel {
   }
 
   // Para ADR 007: Lógica de Ingesta Masiva
-  static async bulkInsert(rates) {
+  static async bulkInsert(providerId, rates) {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
+
+      // 1. Limpieza: Borrar DRAFTS anteriores de este provider
+      // PRECAUCIÓN: Esto asume que toda ingesta reemplaza el borrador anterior
+      await connection.execute(
+        `DELETE FROM rates WHERE provider_id = ? AND status = 'draft'`,
+        [providerId]
+      );
+
+      // 2. Insertar nuevos registros
       for (const rate of rates) {
-        const query = `INSERT INTO rates (provider_id, utility_id, commodity, rate_value, term, status) 
-                               VALUES (?, ?, ?, ?, ?, 'draft')`;
-        await connection.execute(query, [rate.p_id, rate.u_id, rate.commodity, rate.value, rate.term]);
+        const query = `INSERT INTO rates 
+          (provider_id, utility_id, commodity, rate_value, term, status, attributes) 
+          VALUES (?, ?, ?, ?, ?, 'draft', ?)`;
+
+        // Serializar attributes a JSON string
+        const attributesJson = JSON.stringify(rate.attributes || {});
+
+        await connection.execute(query, [
+          rate.provider_id, // Usamos el provider_id de la fila (ya corregido por upload-service)
+          rate.utility_id,
+          rate.commodity,
+          rate.rate_value,
+          rate.term,
+          attributesJson
+        ]);
       }
       await connection.commit();
       return { success: true, count: rates.length };

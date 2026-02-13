@@ -143,6 +143,23 @@ services:
       - ./services/graphql-gateway/server.js:/app/server.js
       - ./services/graphql-gateway/package.json:/app/package.json
 
+  upload-service:
+    build:
+      context: ./services/upload-service
+      dockerfile: Dockerfile
+    container_name: upload-service
+    ports:
+      - "4005:4005"
+    environment:
+      - PORT=4005
+      - RATES_SERVICE_URL=http://rates-service:4002
+      - JWT_SECRET=NwfgMasterSecret2025!!
+    networks:
+      - nwfg-network
+    volumes:
+      - ./services/upload-service/src:/app/src
+      - ./services/upload-service/package.json:/app/package.json
+
 networks:
   nwfg-network:
     driver: bridge

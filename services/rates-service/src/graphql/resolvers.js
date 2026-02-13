@@ -1,7 +1,8 @@
-// Importamos el Modelo (Clean Architecture)
-const RatesModel = require('../models/rates.model'); // Asegúrate que la ruta relativa sea correcta
+const RatesModel = require('../models/rates.model');
+const { GraphQLJSON } = require('graphql-type-json');
 
 const resolvers = {
+  JSON: GraphQLJSON,
   Query: {
     getRates: async () => {
       try {

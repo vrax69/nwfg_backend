@@ -17,6 +17,23 @@ async function startServer() {
     app.use(cors());
     app.use(express.json());
 
+    // REST Endpoint for Bulk Insert (ADR 007)
+    app.post('/rates/bulk', async (req, res) => {
+        try {
+            const RatesModel = require('./models/rates.model');
+            const { provider_id, rates } = req.body;
+            if (!provider_id || !rates) {
+                return res.status(400).json({ success: false, message: "Missing provider_id or rates" });
+            }
+            // console.log(`📥 Bulk Insert for Provider ${provider_id}: ${rates.length} rates`);
+            const result = await RatesModel.bulkInsert(provider_id, rates);
+            return res.json(result);
+        } catch (error) {
+            console.error("❌ Bulk Insert Error:", error);
+            return res.status(500).json({ success: false, message: error.message });
+        }
+    });
+
     // ---------------------------------------------------------
     // 1. INFRAESTRUCTURA (Solo para Docker/K8s)
     // ---------------------------------------------------------
