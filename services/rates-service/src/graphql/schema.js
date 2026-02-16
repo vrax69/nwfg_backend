@@ -5,20 +5,13 @@ const typeDefs = gql`
 
   scalar JSON
 
-  # Definimos el tipo Tarifa
-  type Rate {
+  type Rate @key(fields: "id") {
     id: ID!
-    Standard_Utility_Name: String
-    Product_Name: String
-    Rate: Float
-    ETF: String
-    MSF: String
-    duracion_rate: Int
-    State: String
-    Service_Type: String
-    Logo_URL: String
-    SPL: String
-    provider: Provider # Relación con el Proveedor
+    rate_value: Float
+    term: Int
+    commodity: String
+    status: String # draft, active, archived
+    provider: Provider
     attributes: JSON
   }
 
