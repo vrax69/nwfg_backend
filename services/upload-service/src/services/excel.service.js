@@ -3,27 +3,81 @@ const xlsx = require('xlsx');
 class ExcelService {
 
     /**
-     * Parse Excel buffer and return raw data + metadata
+     * Parse Excel buffer and return extracted blocks via Anchor Detection
      * @param {Buffer} fileBuffer 
      */
     static parseBuffer(fileBuffer) {
         const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
 
-        // Raw JSON
-        const results = xlsx.utils.sheet_to_json(sheet);
+        const anchorDict = [
+            'gas utility', 'electric utility', 'intro period', 'full term length',
+            'utility gas rate', 'utility electric rate', '% of savings', 'intro rate',
+            'initial rate', 'etf per remaining month', 'initial length',
+            'secondary rate', 'secondary length'
+        ];
 
-        // Extract headers from first row if exists
-        let headers = [];
-        if (results.length > 0) {
-            headers = Object.keys(results[0]);
+        const cleanStr = (str) => {
+            if (str === null || str === undefined) return '';
+            return str.toString().toLowerCase().replace(/[\*\n]/g, ' ').replace(/\s+/g, ' ').trim();
+        };
+
+        let allResults = [];
+        let allHeaders = new Set();
+
+        for (const sheetName of workbook.SheetNames) {
+            const sheet = workbook.Sheets[sheetName];
+            const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+            let inBlock = false;
+            let currentHeaders = [];
+
+            for (let i = 0; i < rawRows.length; i++) {
+                const row = rawRows[i];
+                const isEmpty = row.every(cell => cell === null || cell === undefined || cell.toString().trim() === '');
+
+                if (inBlock) {
+                    if (isEmpty) {
+                        inBlock = false; // Cortar el bloque de datos   
+                        continue;
+                    }
+
+                    const rowData = {};
+                    row.forEach((cell, idx) => {
+                        if (idx < currentHeaders.length && currentHeaders[idx]) {
+                            rowData[currentHeaders[idx]] = cell !== null ? cell : '';
+                        }
+                    });
+
+                    const hasData = Object.values(rowData).some(val => val !== '');
+                    if (hasData) {
+                        allResults.push(rowData);
+                    }
+                } else {
+                    if (isEmpty) continue;
+
+                    // Match against dictionary
+                    let matchCount = 0;
+                    const rowCleaned = row.map(cleanStr);
+
+                    for (const cell of rowCleaned) {
+                        if (cell && anchorDict.some(anchor => cell.includes(anchor))) {
+                            matchCount++;
+                        }
+                    }
+
+                    if (matchCount >= 3) { // Regla: Al menos 3 coincidencias -> headerRow
+                        inBlock = true;
+                        currentHeaders = row.map(c => c !== null ? c.toString().trim().replace(/\n/g, ' ') : '');
+                        currentHeaders.forEach(h => { if (h) allHeaders.add(h); });
+                    }
+                }
+            }
         }
 
         return {
             sheets: workbook.SheetNames,
-            headers,
-            results
+            headers: Array.from(allHeaders),
+            results: allResults
         };
     }
 
