@@ -72,6 +72,54 @@ class RateModel {
     */
 
     const [rows] = await db.query(query, params);
+
+    // PHANTOM RATES LOGIC (Provider Capabilities)
+    // Only trigger if a specific utilityId is requested (context-aware query)
+    if (utilityId && state) { // Require state too? Usually getting by utility implies a specific market
+      // 1. Fetch provider configs for active providers in this utility
+      // active_utilities is JSON array of IDs. We check if utilityId is in it.
+      // Note: active_utilities store integers usually.
+
+      const [configs] = await db.query(`
+             SELECT * FROM provider_configs 
+             WHERE JSON_CONTAINS(active_utilities, CAST(? AS CHAR), '$')
+         `, [utilityId]);
+
+      if (configs.length > 0) {
+        const existingProviderIds = new Set(rows.map(r => r.provider_id));
+
+        for (const config of configs) {
+          if (!existingProviderIds.has(config.provider_id)) {
+            // 2. Generate Phantom Rate
+            // We need to construct a Rate object compatible with rows structure
+            // attributes is JSON STRING in DB? No, mysql2 returns objects for JSON columns usually?
+            // Verify db driver configuration. 
+            // users-service used mysql2/promise directly.
+            // standard 'mysql2' returns JSON col as object if typeCast is enabled (default).
+            // But let's assume attributes is object or string.
+
+            let attrs = config.default_attributes;
+            // Ensure attributes has State? We have 'state' param.
+            if (typeof attrs === 'string') attrs = JSON.parse(attrs);
+
+            if (!attrs.State) attrs.State = state || 'NY'; // Fallback
+            if (!attrs.raw_utility_name && utilityId) attrs.raw_utility_name = "Utility " + utilityId; // Fallback
+
+            rows.push({
+              id: `phantom-${config.provider_id}-${utilityId}`, // temporary ID
+              provider_id: config.provider_id,
+              rate_value: attrs.rate_1000 || 0, // Normalized
+              term: attrs.term || 12,
+              commodity: attrs.serviceType || 'Electric',
+              status: 'active',
+              attributes: attrs,
+              is_placeholder: true
+            });
+          }
+        }
+      }
+    }
+
     return rows;
   }
 

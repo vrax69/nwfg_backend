@@ -9,8 +9,36 @@ import { useServer } from 'graphql-ws/lib/use/ws';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import Redis from 'ioredis';
 import { connectConsumer } from './kafka.js';
 import { pubsub } from './pubsub.js';
+
+// --- Standalone Redis subscriber for UPLOAD_EVENTS + presence:typing ---
+// We use a separate ioredis connection in subscriber mode (pubsub.js already has publisher).
+const redisSub = new Redis({
+  host: process.env.REDIS_HOST || 'redis',
+  port: parseInt(process.env.REDIS_PORT) || 6379,
+  retryStrategy: times => Math.min(times * 50, 2000)
+});
+
+redisSub.subscribe('UPLOAD_EVENTS', 'presence:typing', (err) => {
+  if (err) console.error('❌ Redis subscribe failed:', err.message);
+  else console.log('✅ Gateway subscribed to UPLOAD_EVENTS + presence:typing');
+});
+
+// Bridge Redis messages → GraphQL PubSub
+redisSub.on('message', (channel, message) => {
+  try {
+    const payload = JSON.parse(message);
+    if (channel === 'UPLOAD_EVENTS') {
+      pubsub.publish('UPLOAD_EVENT', { uploadEvent: payload });
+    } else if (channel === 'presence:typing') {
+      pubsub.publish('PRESENCE_TYPING', { presenceTyping: payload });
+    }
+  } catch (e) {
+    console.error('❌ Failed to parse Redis message:', e.message);
+  }
+});
 
 dotenv.config();
 
@@ -51,16 +79,56 @@ const gateway = new ApolloGateway({
   },
 });
 
-// Definición del esquema LOCAL para Suscripciones (se "mezcla" visualmente para el cliente)
+// Definición del esquema LOCAL para Suscripciones
 const subscriptionTypeDefs = `
   type Subscription {
+    # --- Tasa / Rate Updates ---
     rateUpdated: RateBulkNotification
+
+    # --- ETL Upload Events (scope: 'local' | 'global') ---
+    # 'local' events have a userId so FE renders only in the uploader's table.
+    # 'global' events (UPLOAD_COMPLETE, UPLOAD_PROGRESS) are shown to all.
+    uploadEvent: UploadEventPayload
+
+    # --- Presencia (ephemeral, zero-DB, pure Redis mirror) ---
+    # Agentes ven quién está buscando tarifas en tiempo real.
+    presenceTyping: PresencePayload
   }
 
   type RateBulkNotification {
     provider_id: ID
     count: Int
     timestamp: String
+  }
+
+  type UploadEventPayload {
+    type: String!          # UPLOAD_STARTED | PARSE_COMPLETE | UPLOAD_PROGRESS | MISSING_ALIAS | UPLOAD_COMPLETE
+    sessionId: String!
+    userId: String         # Owner of the session (used for local vs global routing on FE)
+    scope: String          # 'local' | 'global'
+    filename: String
+    dirtyName: String      # For MISSING_ALIAS events
+    processed: Int
+    total: Int
+    percent: Int
+    providerId: ID
+    rowCount: Int
+    timestamp: String
+  }
+
+  # Ephemeral presence — never touches MySQL.
+  # FE sends { user, center, avatar, action: 'typing' | 'stopped' } to presence:typing via REST or WS.
+  type PresencePayload {
+    userId: String!
+    userName: String
+    center: String         # e.g. 'NWFG' | 'FIS Medellin'
+    avatar: String         # URL
+    action: String!        # 'typing' | 'stopped'
+    timestamp: String
+  }
+
+  type Mutation {
+    setPresence(action: String!): Boolean
   }
 `;
 
@@ -69,7 +137,29 @@ const subscriptionResolvers = {
     rateUpdated: {
       subscribe: () => pubsub.asyncIterator(['RATE_UPDATED']),
     },
+    uploadEvent: {
+      subscribe: () => pubsub.asyncIterator(['UPLOAD_EVENT']),
+    },
+    presenceTyping: {
+      subscribe: () => pubsub.asyncIterator(['PRESENCE_TYPING']),
+    },
   },
+  Mutation: {
+    setPresence: async (_, { action }, context) => {
+      // The context is injected by the WS useServer function below
+      const payload = {
+        userId: context.user?.id?.toString() || 'anonymous',
+        userName: context.user?.nombre || 'Agent',
+        center: context.user?.centro?.toString() || 'NWFG',
+        avatar: context.user?.avatar || '',
+        action,
+        timestamp: new Date().toISOString()
+      };
+      // Emits purely in-memory/Redis, no DB hits
+      await pubsub.publish('PRESENCE_TYPING', { presenceTyping: payload });
+      return true;
+    }
+  }
 };
 
 const subscriptionSchema = makeExecutableSchema({
@@ -89,6 +179,19 @@ const wsServer = new WebSocketServer({
 // Activar el servidor de suscripciones
 const serverCleanup = useServer({
   schema: subscriptionSchema,
+  context: (ctx, msg, args) => {
+    // Inject user context from WS connection params
+    let user = null;
+    const token = ctx.connectionParams?.Authorization?.split(' ')[1] || ctx.connectionParams?.authToken;
+    if (token && process.env.JWT_SECRET) {
+      try {
+        user = jwt.verify(token, process.env.JWT_SECRET);
+      } catch (e) {
+        // Ignorar para permit anónimos si se desea
+      }
+    }
+    return { user };
+  },
   onConnect: (ctx) => {
     console.log('🔌 Cliente WebSocket conectado');
   },

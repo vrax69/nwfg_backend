@@ -11,6 +11,7 @@ const typeDefs = gql`
     term: Int
     commodity: String
     status: String # draft, active, archived
+    is_placeholder: Boolean
     provider: Provider
     attributes: JSON
   }
