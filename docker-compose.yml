@@ -1,45 +1,6 @@
 version: '3.8'
 
 services:
-  # Base Services
-  redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:latest
-    container_name: redpanda
-    ports:
-      - "9092:9092"
-      - "9644:9644"
-    command:
-      - redpanda
-      - start
-      - --overprovisioned
-      - --smp 1
-      - --memory 1G
-      - --reserve-memory 0M
-      - --node-id 0
-      - --check=false
-      - --kafka-addr PLAINTEXT://0.0.0.0:9092
-      - --advertise-kafka-addr PLAINTEXT://redpanda:9092
-    networks:
-      - nwfg-network
-    healthcheck:
-      test: [ "CMD-SHELL", "rpk cluster health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redpanda-console:
-    image: docker.redpanda.com/redpandadata/console:latest
-    container_name: redpanda-console
-    networks:
-      - nwfg-network
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_BROKERS: "redpanda:9092"
-    depends_on:
-      redpanda:
-        condition: service_healthy
-
   redis:
     image: redis:alpine
     container_name: redis_cache
@@ -81,12 +42,10 @@ services:
     env_file:
       - ./env/rates.env # <--- Usando tu archivo de variables específico
     environment:
-      - KAFKA_BROKER=redpanda:9092
+      - KAFKA_BROKER=redpanda:9092 # Removing this dependency
     depends_on:
       mysql:
         condition: service_healthy
-      redpanda:
-        condition: service_healthy # Añadido para evitar errores de conexión al arranque
     networks:
       - nwfg-network
     volumes:
@@ -108,8 +67,6 @@ services:
       - DB_HOST=mysql
     depends_on:
       mysql:
-        condition: service_healthy
-      redpanda:
         condition: service_healthy
     networks:
       - nwfg-network
@@ -135,8 +92,6 @@ services:
         condition: service_started
       rates-service:
         condition: service_started
-      redpanda:
-        condition: service_healthy
     networks:
       - nwfg-network
     volumes:

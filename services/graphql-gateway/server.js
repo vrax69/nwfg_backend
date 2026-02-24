@@ -10,7 +10,6 @@ import { makeExecutableSchema } from '@graphql-tools/schema';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import Redis from 'ioredis';
-import { connectConsumer } from './kafka.js';
 import { pubsub } from './pubsub.js';
 
 // --- Standalone Redis subscriber for UPLOAD_EVENTS + presence:typing ---
@@ -272,8 +271,5 @@ app.use('/graphql', expressMiddleware(server, {
 httpServer.listen(PORT, async () => {
   console.log(`🚀 GraphQL Gateway corriendo en http://localhost:${PORT}/graphql`);
   console.log(`📊 Subgrafos configurados: users-service, scripts-service, rates-service`);
-
-  // Conectar Consumidor de Kafka
-  await connectConsumer();
 });
 
