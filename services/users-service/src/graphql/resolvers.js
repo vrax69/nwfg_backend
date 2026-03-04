@@ -2,34 +2,55 @@ import { db } from '../config/db.js';
 import jwt from 'jsonwebtoken';
 import UsersModel from '../models/users.model.js';
 
-const mapRoleToEnum = (dbRole) => {
-  if (!dbRole) return null;
-  const normalized = dbRole.toLowerCase();
-  if (normalized.includes('admin')) return 'ADMIN';
-  if (normalized.includes('sales') || normalized.includes('agente')) return 'AGENT';
-  if (normalized.includes('qa')) return 'QA';
-  return 'AGENT'; // Default fallback
+/**
+ * Maps the raw DB `rol` + `centro` columns into the granular 5-value Role enum.
+ * centro in DB is an INT: 1 = NWFG, 2 = FIS
+ * Also accepts legacy string values for forward compat.
+ */
+const mapRoleToEnum = (dbRol, dbCentro) => {
+  if (!dbRol) return 'NWFG_AGENT';
+  const rol = dbRol.toLowerCase();
+  const centroNum = parseInt(dbCentro, 10);
+  // 2 = FIS; everything else (1, null, NaN) = NWFG
+  const isFIS = centroNum === 2 || String(dbCentro).toUpperCase().includes('FIS');
+
+  if (rol.includes('admin')) return isFIS ? 'FIS_ADMIN' : 'NWFG_ADMIN';
+  if (rol.includes('qa')) return 'QA_AGENT';
+  return isFIS ? 'FIS_AGENT' : 'NWFG_AGENT';
+};
+
+/**
+ * Derives the tenant string from the centro DB column.
+ * centro INT: 1 = NWFG, 2 = FIS
+ */
+const mapTenant = (dbCentro) => {
+  const centroNum = parseInt(dbCentro, 10);
+  if (centroNum === 2 || String(dbCentro).toUpperCase().includes('FIS')) return 'FIS';
+  return 'NWFG';
 };
 
 const resolvers = {
   Query: {
     me: async (_, __, context) => {
-      if (!context.user) return null;
+      if (!context.user?.id) return null;
       const user = await UsersModel.findById(context.user.id);
       if (!user) return null;
       return {
         ...user,
         id: user.id.toString(),
-        role: mapRoleToEnum(user.rol),
+        role: mapRoleToEnum(user.rol, user.centro),
+        tenant: mapTenant(user.centro),
       };
     },
+
     getUserById: async (_, { id }) => {
       const user = await UsersModel.findById(id);
       if (!user) return null;
       return {
         ...user,
         id: user.id.toString(),
-        role: mapRoleToEnum(user.rol),
+        role: mapRoleToEnum(user.rol, user.centro),
+        tenant: mapTenant(user.centro),
       };
     },
   },
@@ -41,21 +62,22 @@ const resolvers = {
       if (!user) throw new Error('Credenciales inválidas');
       if (user.status !== 'active') throw new Error('Usuario inactivo');
 
-      // Plain text password verification
       if (!UsersModel.verifyPassword(password, user.password)) {
         throw new Error('Credenciales inválidas');
       }
 
-      const roleEnum = mapRoleToEnum(user.rol);
+      const roleEnum = mapRoleToEnum(user.rol, user.centro);
+      const tenant = mapTenant(user.centro);
 
-      // Crear JWT
+      // JWT payload now includes `tenant` for the frontend to use directly
       const token = jwt.sign(
         {
           id: user.id,
           email: user.email,
-          rol: roleEnum, // Use Standard Enum in Token
+          rol: roleEnum,
           nombre: user.nombre,
           centro: user.centro,
+          tenant,
         },
         process.env.JWT_SECRET,
         { expiresIn: '2h' }
@@ -67,22 +89,19 @@ const resolvers = {
           id: user.id.toString(),
           nombre: user.nombre,
           email: user.email,
-          role: roleEnum, // Return Standard Enum
-          rol: user.rol, // Ensure DB value is present for resolvers
-          status: user.status,
+          role: roleEnum,
+          tenant,
           centro: user.centro,
+          status: user.status,
         },
       };
     },
 
     updateProviderCredential: async (_, { providerId, portalUser, portalPass, tpvId }, context) => {
-      // 1. Auth Check: Only Agent (self) or Admin can update
-      if (!context.user) throw new Error('UNAUTHENTICATED');
+      if (!context.user?.id) throw new Error('UNAUTHENTICATED');
 
       const userId = context.user.id;
 
-      // Upsert Logic (MySQL)
-      // ON DUPLICATE KEY UPDATE logic
       const query = `
         INSERT INTO agent_provider_credentials (user_id, provider_id, portal_username, portal_password, tpv_id)
         VALUES (?, ?, ?, ?, ?)
@@ -94,24 +113,39 @@ const resolvers = {
 
       await db.execute(query, [userId, providerId, portalUser, portalPass, tpvId]);
 
-      // Return updated User (to trigger User resolvers)
       const user = await UsersModel.findById(userId);
       return {
         ...user,
         id: user.id.toString(),
-        role: mapRoleToEnum(user.rol),
+        role: mapRoleToEnum(user.rol, user.centro),
+        tenant: mapTenant(user.centro),
       };
     }
   },
 
   User: {
-
-    credentials: async (parent) => {
+    /**
+     * Returns credential STATUS only — never the raw portal_password.
+     * portalName comes from the `proveedores` table joined via provider_id.
+     */
+    thirdPartyCredentials: async (parent) => {
       try {
-        const [rows] = await db.query('SELECT * FROM agent_provider_credentials WHERE user_id = ?', [parent.id]);
-        return rows;
+        const [rows] = await db.query(
+          `SELECT apc.provider_id,
+                  apc.portal_password,
+                  p.nombre AS portalName
+           FROM agent_provider_credentials apc
+           LEFT JOIN user_data_tpv_staging.proveedores p ON p.id = apc.provider_id
+           WHERE apc.user_id = ?`,
+          [parent.id]
+        );
+        return rows.map(row => ({
+          portalName: row.portalName || `Provider ${row.provider_id}`,
+          // True if a non-empty password is stored — never expose the value
+          isPasswordSet: !!(row.portal_password && row.portal_password.trim() !== ''),
+        }));
       } catch (error) {
-        console.error('Error fetching User.credentials:', error);
+        console.error('Error fetching thirdPartyCredentials:', error);
         return [];
       }
     },
@@ -122,21 +156,24 @@ const resolvers = {
       return {
         ...userData,
         id: userData.id.toString(),
-        role: mapRoleToEnum(userData.rol), // Mapping helper
+        role: mapRoleToEnum(userData.rol, userData.centro),
+        tenant: mapTenant(userData.centro),
       };
     },
 
-    role: (parent) => parent.role || mapRoleToEnum(parent.rol), // Explicit resolver for role
+    role: (parent) => {
+      if (parent.role && typeof parent.role === 'string' && parent.role.includes('_')) {
+        return parent.role; // already mapped
+      }
+      return mapRoleToEnum(parent.rol, parent.centro);
+    },
+
+    tenant: (parent) => parent.tenant || mapTenant(parent.centro),
 
     accounts: async (parent) => {
-      // ... existing logic ...
-      console.log('🔍 User.accounts resolver executed');
-      // ... 
       try {
         const [rows] = await db.query(
-          `SELECT *
-           FROM user_data_tpv_staging.user_provider_account
-           WHERE user_id = ?`,
+          `SELECT * FROM user_data_tpv_staging.user_provider_account WHERE user_id = ?`,
           [parent.id]
         );
         return rows.map(row => ({
@@ -157,14 +194,10 @@ const resolvers = {
     provider: async (account) => {
       try {
         if (!account.provider_id) return null;
-
         const [[provider]] = await db.query(
-          `SELECT *
-           FROM user_data_tpv_staging.proveedores
-           WHERE id = ?`,
+          `SELECT * FROM user_data_tpv_staging.proveedores WHERE id = ?`,
           [account.provider_id]
         );
-
         return provider || null;
       } catch (error) {
         console.error('Error fetching TPVAccount.provider:', error);
@@ -190,4 +223,3 @@ const resolvers = {
 };
 
 export default resolvers;
-

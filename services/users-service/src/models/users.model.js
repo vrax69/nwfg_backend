@@ -4,7 +4,7 @@ const UsersModel = {
     findById: async (id) => {
         try {
             const [[user]] = await db.query(
-                `SELECT id, nombre, email, rol as role, status, centro
+                `SELECT id, nombre, email, rol, rol as role, status, centro
          FROM user_data_tpv_staging.usuarios
          WHERE id = ?`,
                 [id]

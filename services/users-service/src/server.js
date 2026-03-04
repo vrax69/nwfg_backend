@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import express from "express";
 import app from "./app.js";
-import { kafkaConnect } from "./config/kafka.js";
+// Kafka removed - using Redis pub/sub instead
 import { ApolloServer } from "@apollo/server";
 import { expressMiddleware } from "@apollo/server/express4";
 import { buildSubgraphSchema } from "@apollo/subgraph";
@@ -22,8 +22,7 @@ const apolloServer = new ApolloServer({
 
 async function startServer() {
   try {
-    await kafkaConnect();
-    // await startUserEventsConsumer();
+    // Kafka removed - events handled via Redis pub/sub
 
     // Inicializar Apollo Server
     await apolloServer.start();

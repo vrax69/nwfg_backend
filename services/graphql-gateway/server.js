@@ -222,9 +222,15 @@ const server = new ApolloServer({
 // Inicializar el servidor
 await server.start();
 
-// Middleware
-app.use(cors());
+// CORS: permite cookies (credentials) desde el frontend Next.js
+// En producción, FRONTEND_ORIGIN debe ser la URL de Dockploy.
+const corsOptions = {
+  origin: process.env.FRONTEND_ORIGIN || 'http://localhost:3000',
+  credentials: true,  // Necesario para que las cookies HttpOnly viajen cross-origin
+};
+app.use(cors(corsOptions));
 app.use(express.json());
+
 
 // Endpoint de salud
 app.get('/health', (req, res) => {
@@ -234,38 +240,50 @@ app.get('/health', (req, res) => {
 // Montar GraphQL en /graphql
 app.use('/graphql', expressMiddleware(server, {
   context: async ({ req }) => {
-    // 1. Detectar si es una operación que DEBE ser pública
-    const operationName = req.body.operationName;
-    const queryBody = req.body.query || '';
+    const operationName = req.body?.operationName;
+    const queryBody = req.body?.query || '';
     const isIntrospection = operationName === 'IntrospectionQuery';
     const isLogin = queryBody.includes('login') || operationName === 'Login';
 
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.split(' ')[1] || '';
+    // --- Extracción del token: dual-mode ---
+    // 1. Header Authorization: Bearer <token>  (usado por Apollo Client del browser)
+    // 2. Cookie nwfg_token=<token>             (usado por Server Actions de Next.js / BFF)
+    let token = req.headers.authorization?.split(' ')[1] || '';
+
+    if (!token && req.headers.cookie) {
+      const cookieMatch = req.headers.cookie.match(/(?:^|;\s*)nwfg_token=([^;]+)/);
+      if (cookieMatch) token = cookieMatch[1];
+    }
 
     let user = null;
 
     if (token && process.env.JWT_SECRET) {
       try {
         user = jwt.verify(token, process.env.JWT_SECRET);
-      } catch (error) {
-        console.warn('⚠️ Intento de acceso con token inválido');
+      } catch {
+        console.warn('⚠️ Token inválido o expirado');
       }
     }
 
-    // 2. Aplicar el Bloqueo: Si no hay usuario y no es una excepción, lanzar error
-    // 2. Aplicar el Bloqueo: Si no hay usuario y no es una excepción, lanzar error
+    // Permitir WebSocket handshakes sin bloquear
+    if (req.headers?.upgrade === 'websocket') {
+      return { user: null };
+    }
+
+    // Bloquear peticiones no autenticadas (excepto login e introspection)
+    // Usamos GraphQLError para que Apollo devuelva 200 con error code UNAUTHENTICATED
+    // y NO un HTTP 500 que rompe al cliente
     if (!user && !isLogin && !isIntrospection) {
-      // Permitir paso si es WebSocket handshake (a veces req.method es GET pero headers upgrade)
-      if (req.headers && req.headers.upgrade === 'websocket') {
-        return { user: null }; // Permitir handshake anónimo por ahora
-      }
-      throw new Error('UNAUTHENTICATED');
+      const { GraphQLError } = await import('graphql');
+      throw new GraphQLError('No autenticado', {
+        extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } },
+      });
     }
 
     return { user };
   },
 }));
+
 
 // Iniciar el servidor HTTP
 httpServer.listen(PORT, async () => {

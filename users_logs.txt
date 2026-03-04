@@ -1,0 +1,8 @@
+﻿
+> users-service@1.0.0 start
+> node src/server.js
+
+Enabling inline tracing for this subgraph. To disable, use ApolloServerPluginInlineTraceDisabled.
+­ƒÜÇ Users-service corriendo en puerto 4001
+­ƒôè REST API disponible en http://localhost:4001
+­ƒöÀ GraphQL Subgraph disponible en http://localhost:4001/graphql

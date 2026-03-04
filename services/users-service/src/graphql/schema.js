@@ -3,29 +3,31 @@ import { gql } from 'graphql-tag';
 const typeDefs = gql`
   extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
 
+  # Granular 5-value role enum for multi-tenant UI access control
   enum Role {
-    ADMIN
-    QA
-    AGENT
+    NWFG_ADMIN
+    FIS_ADMIN
+    NWFG_AGENT
+    FIS_AGENT
+    QA_AGENT
   }
 
-  type ProviderCredential {
-    id: ID!
-    provider_id: Int!
-    portal_username: String
-    portal_password: String
-    tpv_id: String
+  # Safe credential status — NEVER exposes raw passwords
+  type ThirdPartyCredential {
+    portalName: String!
+    isPasswordSet: Boolean!
   }
 
   type User @key(fields: "id") {
     id: ID!
     nombre: String
     email: String
-    centro: String # NWFG, FIS
+    tenant: String   # "NWFG" | "FIS" — drives frontend theming
+    centro: String   # Raw DB value, kept for backward compat
     role: Role
     status: String
     accounts: [TPVAccount]
-    credentials: [ProviderCredential]
+    thirdPartyCredentials: [ThirdPartyCredential]
   }
 
   type TPVAccount {
