@@ -4,7 +4,7 @@ const UsersModel = {
     findById: async (id) => {
         try {
             const [[user]] = await db.query(
-                `SELECT id, nombre, email, rol, rol as role, status, centro
+                `SELECT id, nombre, username, email, rol, rol as role, status, centro
          FROM user_data_tpv_staging.usuarios
          WHERE id = ?`,
                 [id]
@@ -15,17 +15,17 @@ const UsersModel = {
         }
     },
 
-    findByEmail: async (email) => {
+    findByUsername: async (username) => {
         try {
             const [rows] = await db.query(
-                `SELECT id, nombre, email, rol, centro, password, status
+                `SELECT id, nombre, username, email, rol, centro, password, status
          FROM user_data_tpv_staging.usuarios
-         WHERE email = ? LIMIT 1`,
-                [email]
+         WHERE username = ? LIMIT 1`,
+                [username]
             );
             return rows[0];
         } catch (error) {
-            throw new Error('Error finding user by email: ' + error.message);
+            throw new Error('Error finding user by username: ' + error.message);
         }
     },
 

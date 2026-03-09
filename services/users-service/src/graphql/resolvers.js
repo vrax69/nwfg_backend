@@ -56,8 +56,8 @@ const resolvers = {
   },
 
   Mutation: {
-    login: async (_, { email, password }) => {
-      const user = await UsersModel.findByEmail(email);
+    login: async (_, { username, password }) => {
+      const user = await UsersModel.findByUsername(username);
 
       if (!user) throw new Error('Credenciales inválidas');
       if (user.status !== 'active') throw new Error('Usuario inactivo');
@@ -69,11 +69,12 @@ const resolvers = {
       const roleEnum = mapRoleToEnum(user.rol, user.centro);
       const tenant = mapTenant(user.centro);
 
-      // JWT payload now includes `tenant` for the frontend to use directly
+      // JWT payload includes username + tenant for the frontend
       const token = jwt.sign(
         {
           id: user.id,
           email: user.email,
+          username: user.username,
           rol: roleEnum,
           nombre: user.nombre,
           centro: user.centro,

@@ -21,6 +21,7 @@ const typeDefs = gql`
   type User @key(fields: "id") {
     id: ID!
     nombre: String
+    username: String
     email: String
     tenant: String   # "NWFG" | "FIS" — drives frontend theming
     centro: String   # Raw DB value, kept for backward compat
@@ -56,7 +57,7 @@ const typeDefs = gql`
   }
 
   type Mutation {
-    login(email: String!, password: String!): AuthResponse!
+    login(username: String!, password: String!): AuthResponse!
     updateProviderCredential(providerId: ID!, portalUser: String, portalPass: String, tpvId: String): User
   }
 `;
