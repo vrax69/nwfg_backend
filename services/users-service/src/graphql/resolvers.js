@@ -81,7 +81,8 @@ const resolvers = {
           tenant,
         },
         process.env.JWT_SECRET,
-        { expiresIn: '2h' }
+        // TODO: Tech Debt — Implement Refresh Tokens para v3. JWT largo es aceptable en B2B interno detrás de Fortinet, pero sería riesgo crítico si se expone a externos.
+        { expiresIn: '10h' }
       );
 
       return {

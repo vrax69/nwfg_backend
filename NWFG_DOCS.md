@@ -246,7 +246,7 @@ La DB almacena `rol` (string: `admin`, `agent`, `qa`) y `centro` (int: `1=NWFG`,
   "tenant": "NWFG"
 }
 ```
-> **Expiración:** 2 horas.
+> **Expiración:** 10 horas. (ADR-007 — cubre un turno laboral completo. Tech Debt: implementar Refresh Tokens en v3.)
 
 **Mutations:**
 - `login(email, password)` → `AuthResponse!` — Retorna token + objeto User
@@ -448,7 +448,21 @@ JWT_SECRET=NwfgMasterSecret2025!!
 
 ## 7. WebSockets & Real-Time (Contrato Frontend)
 
-El Frontend se conecta **una sola vez** al gateway en `ws://localhost:4000/graphql` (o `wss://nwfg.net/graphql` en prod) y escucha la suscripción:
+El Frontend se conecta **una sola vez** al gateway en `ws://localhost:4000/graphql` (o `wss://nwfg.net/graphql` en prod) y escucha la suscripción.
+
+### Resiliencia del cliente WS (`ApolloWrapper.tsx`)
+
+La conexión WS está configurada para **nunca rendirse** si hay una caída de red o reinicio del servidor:
+
+| Config | Valor | Por qué |
+|---|---|---|
+| `keepAlive` | 10 000 ms | Detecta drops silenciosos de Nginx / balanceadores |
+| `retryAttempts` | `Infinity` | Reintenta indefinidamente |
+| `retryWait` | Backoff exponencial 1s→2s→4s→…→30s | No satura el servidor durante un deploy de Dokploy |
+| `shouldRetry` | `() => true` | No se rinde nunca, sin importar el código de cierre |
+
+> Los eventos de conexión/cierre se loguean en la consola del browser: `[WS] ✅ Conectado` / `[WS] ⚠️ Conexión cerrada.`
+
 
 ```graphql
 subscription {
@@ -833,6 +847,13 @@ node verify_credentials.js
 
 - **Contexto:** El frontend Next.js usa Server Actions que lanzan peticiones desde el servidor. En ese contexto, no pueden poner el token en headers de manera sencilla, pero sí pueden usar cookies HttpOnly.
 - **Decisión:** El gateway extrae el token de dos fuentes con prioridad: (1) `Authorization: Bearer` header, (2) cookie `nwfg_token`. Esto permite tanto el uso desde el browser (Apollo Client) como desde Server Actions (BFF pattern).
+- **Nota de implementación WS:** La cookie `nwfg_token` es `HttpOnly`, por lo que `document.cookie` en el browser no puede leerla. El WebSocket NO usa `connectionParams` para autenticarse — el browser envía la cookie automáticamente en el HTTP upgrade handshake, y el gateway la lee server-side. `connectionParams` en `ApolloWrapper.tsx` es un stub vacío intencionalmente.
+
+### ADR-007: Estrategia de Sesión B2B — JWT 10h (Mar 9, 2026)
+
+- **Contexto:** Los agentes usan la plataforma en turnos de 8h. Con JWT de 2h, el WebSocket (que relee el token en cada reconexión) fallaría a mitad del turno si el cliente WS se desconectaba temporalmente. Implementar Refresh Tokens complica la arquitectura innecesariamente para un sistema interno detrás de Fortinet.
+- **Decisión:** Extender `expiresIn` de `2h` a `10h` en `users-service/resolvers.js`. El cliente WS en `ApolloWrapper.tsx` complementa con `retryAttempts: Infinity` + backoff exponencial para sobrevivir caídas de red y redeploys.
+- **Trade-off asumido:** Un JWT de 10h no se puede revocar remotamente hasta que expire. Aceptable en red corporativa interna (Fortinet + VPN). **Tech Debt:** Si se expone a usuarios externos, implementar Refresh Tokens.
 
 ### ADR-006: Hairpinning DNS para MinIO en Producción
 

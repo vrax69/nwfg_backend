@@ -27,6 +27,10 @@ class ExcelService {
         for (const sheetName of workbook.SheetNames) {
             const sheet = workbook.Sheets[sheetName];
             const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null });
+            console.log(`[DEBUG] Hoja ${sheetName} tiene ${rawRows.length} filas.`);
+            if (rawRows.length > 0) {
+                console.log(`[DEBUG] Primeras 3 filas:`, rawRows.slice(0, 3));
+            }
 
             let inBlock = false;
             let currentHeaders = [];
@@ -55,17 +59,11 @@ class ExcelService {
                 } else {
                     if (isEmpty) continue;
 
-                    // Match against dictionary
-                    let matchCount = 0;
-                    const rowCleaned = row.map(cleanStr);
+                    // Simplificado: si la fila tiene palabras clave comunes de energía, es el header
+                    const rowStr = row.join(' ').toLowerCase();
+                    const hasKeywords = ['utility', 'rate', 'price', 'term', 'ldc', 'state', 'product'].some(kw => rowStr.includes(kw));
 
-                    for (const cell of rowCleaned) {
-                        if (cell && anchorDict.some(anchor => cell.includes(anchor))) {
-                            matchCount++;
-                        }
-                    }
-
-                    if (matchCount >= 3) { // Regla: Al menos 3 coincidencias -> headerRow
+                    if (hasKeywords && row.filter(Boolean).length >= 3) {
                         inBlock = true;
                         currentHeaders = row.map(c => c !== null ? c.toString().trim().replace(/\n/g, ' ') : '');
                         currentHeaders.forEach(h => { if (h) allHeaders.add(h); });
