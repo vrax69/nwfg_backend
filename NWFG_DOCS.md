@@ -896,3 +896,27 @@ sudo chmod 666 /var/run/docker.sock    # Dar acceso al socket de Docker
 # Limpiar logs del contenedor dokploy
 sudo truncate -s 0 $(docker inspect --format='{{.LogPath}}' dokploy)
 ```
+
+---
+
+## 15. Usuarios del Sistema (`user_data_tpv_staging.usuarios`)
+
+> **Consultado:** Marzo 2026. Fuente: `user_data_tpv_staging.usuarios` en el contenedor `mysql_db`.
+> El rol granular (columna **Rol Enum**) es derivado en runtime por el resolver combinando `rol` (DB) + `centro` (DB) según la lógica del `users-service` (ver sección 4.2).
+
+| ID | Nombre | Username | Password | Email | Rol (DB) | Centro (DB) | Rol Enum (GraphQL) | Tenant | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| `5` | Brian | `brian` | `Gabriela19@` | `brian@nwfg.com` | `admin` | `1` | `NWFG_ADMIN` | `NWFG` | `active` |
+| `6` | FIS Agent | `fis.agent` | `fis` | `fis.agent@nwfg.com` | `agent` | `2` | `FIS_AGENT` | `FIS` | `active` |
+| `7` | NWFG Agent | `nwfg.agent` | `nwfg` | `nwfg.agent@nwfg.com` | `agent` | `1` | `NWFG_AGENT` | `NWFG` | `active` |
+
+### Detalle de Permisos por Usuario
+
+| Usuario | Puede hacer ETL upload | Ve todas las tarifas | Admin de alias | Tenant |
+|---|---|---|---|---|
+| **Brian** (`NWFG_ADMIN`) | ✅ | ✅ | ✅ | NWFG |
+| **FIS Agent** (`FIS_AGENT`) | ❌ | ✅ (solo lectura) | ❌ | FIS |
+| **NWFG Agent** (`NWFG_AGENT`) | ❌ | ✅ (solo lectura) | ❌ | NWFG |
+
+> **Credenciales de acceso local/dev:** Password en plain text en la DB (ver ADR pendiente: hashear passwords, Tech Debt).
+> Para login: `mutation login(email: "...", password: "...")` en `http://localhost:4000/graphql`.
