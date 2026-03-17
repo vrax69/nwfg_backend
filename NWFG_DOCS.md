@@ -138,10 +138,10 @@ nwfg_docker/
 │   │
 │   ├── upload-service/         # ETL: recibe Excel, parsea, inserta en DB via Redis.
 │   │   └── src/
-│   │       ├── controllers/    # uploadController.js — orquesta el flujo ETL
-│   │       ├── routes/         # uploadRoutes.js — endpoint multipart
-│   │       ├── services/       # excelParser.js, minioClient.js
-│   │       ├── config/         # Configuración de MinIO y Redis
+│   │       ├── controllers/    # upload.controller.js — orquesta el flujo ETL
+│   │       ├── routes/         # upload.routes.js — endpoint multipart
+│   │       ├── services/       # excel.service.js
+│   │       ├── config/         # db.js (MySQL pool), redis.js, minio.js
 │   │       └── middleware/     # Auth para el endpoint de upload
 │   │
 │   ├── scripts-service/        # Listado dinámico de guiones PDF desde MinIO.
@@ -387,6 +387,23 @@ CREATE TABLE rates (
 | `utility_aliases` | Mapeo sucio→limpio para el ETL (Human-in-the-loop) |
 | `provider_configs` | Configuración para generar Phantom Rates al vuelo |
 | `agent_provider_credentials` | Bóveda de credenciales de portales de terceros por agente |
+| `upload_logs` | Auditoría de cada archivo Excel procesado por el ETL |
+
+**Schema `upload_logs`:**
+```sql
+CREATE TABLE IF NOT EXISTS upload_logs (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    user_id           INT NOT NULL,                   -- x-user-id del uploader (del JWT)
+    original_filename VARCHAR(255) NOT NULL,
+    minio_path        VARCHAR(500) NOT NULL,           -- Ej: audit/excels/2026-03-17_{sessionId}_file.xlsx
+    file_size_bytes   INT,
+    status            ENUM('processing', 'completed', 'failed', 'reverted') DEFAULT 'processing',
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+> **Flujo del status:** El registro se crea con `processing` al recibir el archivo. `processSession()` lo actualiza a `completed` al terminar o `failed` si la sesión expira o hay un error crítico. El `logId` viaja en Redis (clave `upload:{sessionId}:logId`, TTL 1h) para que el proceso async pueda recuperarlo.
 
 ---
 
@@ -437,11 +454,31 @@ JWT_SECRET=NwfgMasterSecret2025!!
 FRONTEND_ORIGIN=http://localhost:3000   # En prod: https://nwfg.net
 ```
 
-### Variables del Upload Service (en docker-compose.yml)
+### Variables del Upload Service (`env/upload.env`)
 ```env
 PORT=4005
 RATES_SERVICE_URL=http://rates-service:4002
+USERS_SERVICE_URL=http://users-service:4001
 JWT_SECRET=NwfgMasterSecret2025!!
+NODE_ENV=development
+
+# MySQL
+DB_HOST=mysql
+DB_USER=root
+DB_PASSWORD=root_password
+DB_NAME=nwfg_db
+
+# Redis
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+# MinIO (en prod: MINIO_ENDPOINT=files.nwfg.net, MINIO_PORT=443, MINIO_USE_SSL=true)
+MINIO_ENDPOINT=minio
+MINIO_PORT=9000
+MINIO_USE_SSL=false
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=nwfg-frontend
 ```
 
 ---

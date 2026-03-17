@@ -73,8 +73,8 @@ const resolvers = {
       const token = jwt.sign(
         {
           id: user.id,
-          email: user.email,
           username: user.username,
+          email: user.email,
           rol: roleEnum,
           nombre: user.nombre,
           centro: user.centro,

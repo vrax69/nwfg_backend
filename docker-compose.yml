@@ -105,10 +105,11 @@ services:
     container_name: upload-service
     ports:
       - "4005:4005"
-    environment:
-      - PORT=4005
-      - RATES_SERVICE_URL=http://rates-service:4002
-      - JWT_SECRET=NwfgMasterSecret2025!!
+    env_file:
+      - ./env/upload.env
+    depends_on:
+      - redis
+      - rates-service
     networks:
       - nwfg-network
     volumes:

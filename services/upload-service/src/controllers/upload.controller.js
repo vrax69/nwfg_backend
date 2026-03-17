@@ -1,20 +1,9 @@
 const ExcelService = require('../services/excel.service');
 const redis = require('../config/redis');
+const { minioClient, MINIO_BUCKET } = require('../config/minio');
+const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
-const Minio = require('minio');
-
-// MinIO client - Only active if env vars are set
-let minioClient = null;
-if (process.env.MINIO_ENDPOINT) {
-    minioClient = new Minio.Client({
-        endPoint: process.env.MINIO_ENDPOINT || 'minio',
-        port: parseInt(process.env.MINIO_PORT) || 9000,
-        useSSL: false,
-        accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-        secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin'
-    });
-}
 
 class UploadController {
 
@@ -35,13 +24,23 @@ class UploadController {
             // --- MINIO BACKUP (Audit Trail) ---
             // Save original file stream to MinIO before any processing.
             // This is fire-and-forget so failures don't block the upload flow.
+            const minioPath = `audit/excels/${new Date().toISOString().split('T')[0]}_${sessionId}_${req.file.originalname}`;
             if (minioClient) {
-                const bucket = process.env.MINIO_BUCKET || 'nwfg-frontend';
-                const objectName = `uploads/${sessionId}/${req.file.originalname}`;
-                minioClient.putObject(bucket, objectName, req.file.buffer, req.file.size)
-                    .then(() => console.log(`✅ MinIO: ${objectName} backed up`))
+                minioClient.putObject(MINIO_BUCKET, minioPath, req.file.buffer, req.file.size)
+                    .then(() => console.log(`✅ MinIO audit backup: ${minioPath}`))
                     .catch(err => console.error('⚠️ MinIO backup failed (non-blocking):', err.message));
             }
+
+            // --- DB AUDIT LOG ---
+            // INSERT registro de auditoría. status='processing' hasta que processSession termine.
+            // Guardamos el logId en Redis para recuperarlo en el paso async.
+            const [logResult] = await db.query(
+                `INSERT INTO upload_logs (user_id, original_filename, minio_path, file_size_bytes, status)
+                 VALUES (?, ?, ?, ?, 'processing')`,
+                [userId, req.file.originalname, minioPath, req.file.size]
+            );
+            await redis.set(`upload:${sessionId}:logId`, logResult.insertId, 'EX', 3600);
+            console.log(`📋 upload_logs INSERT id=${logResult.insertId} user=${userId}`);
 
             // Emit UPLOAD_STARTED — includes userId so Gateway can route it
             await redis.publish('UPLOAD_EVENTS', JSON.stringify({
@@ -101,9 +100,13 @@ class UploadController {
     static async processSession(sessionId, providerId, mapping, userId = 'unknown') {
         console.log(`⚙️ Processing Session ${sessionId}`);
 
+        // Recuperar logId del audit trail (guardado en Redis en la fase de upload)
+        const logId = await redis.get(`upload:${sessionId}:logId`);
+
         const fileBase64 = await redis.get(`upload:${sessionId}:file`);
         if (!fileBase64) {
             console.error("Session expired or missing file");
+            if (logId) await db.query(`UPDATE upload_logs SET status = 'failed' WHERE id = ?`, [logId]);
             return;
         }
 
@@ -181,6 +184,15 @@ class UploadController {
         if (ratesBatch.length > 0) {
             await axios.post(`${RATES_SERVICE_URL}/rates/bulk`, { provider_id: providerId, rates: ratesBatch });
             processedCount += ratesBatch.length;
+        }
+
+        // Marcar como completado en upload_logs
+        if (logId) {
+            await db.query(
+                `UPDATE upload_logs SET status = 'completed' WHERE id = ?`,
+                [logId]
+            );
+            console.log(`✅ upload_logs UPDATE id=${logId} status=completed`);
         }
 
         // UPLOAD_COMPLETE is global — triggers Sileo toast for all connected users

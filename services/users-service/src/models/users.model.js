@@ -15,6 +15,8 @@ const UsersModel = {
         }
     },
 
+    // Login por username (campo dedicado, formato nombre.apellido)
+    // Email es solo informativo — el staff lo asigna pero no se usa para auth
     findByUsername: async (username) => {
         try {
             const [rows] = await db.query(
