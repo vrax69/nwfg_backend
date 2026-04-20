@@ -80,6 +80,10 @@ const gateway = new ApolloGateway({
 
 // Definición del esquema LOCAL para Suscripciones
 const subscriptionTypeDefs = `
+  type Query {
+    _health: Boolean
+  }
+
   type Subscription {
     # --- Tasa / Rate Updates ---
     rateUpdated: RateBulkNotification
@@ -166,6 +170,10 @@ const subscriptionSchema = makeExecutableSchema({
   resolvers: subscriptionResolvers,
 });
 
+// DEBUG: verificar el schema antes de pasarlo al WS server
+console.log('[DEBUG] subscriptionSchema queryType:', subscriptionSchema.getQueryType()?.name ?? 'NULL');
+console.log('[DEBUG] subscriptionSchema __validationErrors:', subscriptionSchema.__validationErrors ?? 'ninguno');
+
 // Crear httpServer explícitamente para compartirlo con WS y Express
 const httpServer = createServer(app);
 
@@ -178,6 +186,9 @@ const wsServer = new WebSocketServer({
 // Activar el servidor de suscripciones
 const serverCleanup = useServer({
   schema: subscriptionSchema,
+  // validate eliminado — el custom validate llamaba gqlValidate que tira
+  // "Query root type must be provided" y rompe el subscription silenciosamente.
+  // graphql-ws maneja la validación por defecto correctamente.
   context: (ctx, msg, args) => {
     // Inject user context from WS connection params
     let user = null;

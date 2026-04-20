@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Bash(curl -s http://localhost:4005/health)",
+      "Bash(docker exec redis_cache *)",
+      "Bash(dir \"C:\\\\Users\\\\bllanes\\\\Documents\\\\NWFG Frontend V2\\\\nwfg-frontend-v2\\\\src\\\\lib\")",
+      "Bash(dir \"C:\\\\Users\\\\bllanes\\\\Documents\\\\NWFG Frontend V2\\\\nwfg-frontend-v2\\\\src\\\\features\\\\etl-processor\\\\components\")",
+      "Bash(timeout 2 docker logs upload-service --since 5s)",
+      "Bash(curl *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

@@ -19,12 +19,21 @@ async function startServer() {
 
     // REST Endpoint for Bulk Insert (ADR 007)
     app.post('/rates/bulk', async (req, res) => {
-        // ... implementation above ...
         try {
             const RatesModel = require('./models/rates.model');
+            const pubsub = require('./config/pubsub');
             const { provider_id, rates } = req.body;
-            // ...
             const result = await RatesModel.bulkInsert(provider_id, rates);
+
+            // Notify all WebSocket subscribers that new rates are available
+            pubsub.publish('RATE_UPDATED', {
+                ratesUpdated: {
+                    provider_id,
+                    count: Array.isArray(rates) ? rates.length : 0,
+                    timestamp: new Date().toISOString(),
+                },
+            }).catch(err => console.error('⚠️ [rates] pubsub publish failed:', err.message));
+
             return res.json(result);
         } catch (error) {
             console.error("❌ Bulk Insert Error:", error);

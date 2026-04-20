@@ -108,12 +108,17 @@ services:
     env_file:
       - ./env/upload.env
     depends_on:
-      - redis
-      - rates-service
+      redis:
+        condition: service_started
+      rates-service:
+        condition: service_started
+      mysql:
+        condition: service_healthy
     networks:
       - nwfg-network
     volumes:
       - ./services/upload-service/src:/app/src
+      - ./services/upload-service/index.js:/app/index.js
       - ./services/upload-service/package.json:/app/package.json
 
 networks:
