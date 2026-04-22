@@ -1,32 +1,32 @@
 const { Worker } = require('bullmq');
-const axios = require('axios');
 const ExcelService = require('../services/excel.service');
 const redis = require('../config/redis');
 const db = require('../config/db');
 const { connection } = require('../queues/etl.queues');
 const { emitUploadEvent } = require('../events/emit');
+const { CANONICAL, UTILITY_KEYS, CORE_KEYS } = require('../constants/canonicalKeys');
 
-const RATES_SERVICE_URL = process.env.RATES_SERVICE_URL || 'http://rates-service:4002';
-const BATCH_SIZE = 50;
+const ETL_CHANNEL = 'ETL_EVENTS';
+const BATCH_SIZE  = 50;
 
 const processWorker = new Worker('etl-process', async (job) => {
     const { sessionId, providerId, mapping, userId } = job.data;
 
-    const logId = await redis.get(`upload:${sessionId}:logId`);
-
+    const logId      = await redis.get(`upload:${sessionId}:logId`);
     const fileBase64 = await redis.get(`upload:${sessionId}:file`);
+
     if (!fileBase64) {
         if (logId) await db.query(`UPDATE upload_logs SET status = 'failed' WHERE id = ?`, [logId]);
         throw new Error(`Session ${sessionId} expired or file missing in Redis`);
     }
 
-    const buffer = Buffer.from(fileBase64, 'base64');
+    const buffer  = Buffer.from(fileBase64, 'base64');
     const rawData = ExcelService.parseBuffer(buffer);
-    const rows = rawData.results;
-    const total = rows.length;
+    const rows    = rawData.results;
+    const total   = rows.length;
 
     let processedCount = 0;
-    let ratesBatch = [];
+    let ratesBatch     = [];
 
     for (const row of rows) {
         const rawUtil = resolveUtilityColumn(row, mapping);
@@ -35,33 +35,34 @@ const processWorker = new Worker('etl-process', async (job) => {
             const utilId = await callResolveUtility(rawUtil);
 
             if (!utilId) {
-                // Local: wizard shows inline error (uploader only)
-                await emitUploadEvent({ type: 'MISSING_ALIAS', sessionId, userId, scope: 'local', dirtyName: rawUtil });
-                // Global: other tabs see the upload stopped
-                await emitUploadEvent({ type: 'UPLOAD_COMPLETE', sessionId, userId, scope: 'global', total: processedCount, providerId, error: 'missing_alias', dirtyName: rawUtil });
+                await redis.set(`upload:${sessionId}:status`, 'awaiting_user', 'EX', 7200);
+                await emitUploadEvent({
+                    type:      'AWAITING_USER',
+                    sessionId,
+                    userId,
+                    scope:     'local',
+                    dirtyName: rawUtil,
+                    message:   `No se encontró alias para "${rawUtil}". Selecciona la utilidad correcta para continuar.`,
+                });
                 if (logId) await db.query(`UPDATE upload_logs SET status = 'failed' WHERE id = ?`, [logId]);
-                return { status: 'missing_alias', dirtyName: rawUtil };
+                return { status: 'awaiting_user', dirtyName: rawUtil };
             }
 
             ratesBatch.push(buildRateObject(row, utilId, mapping));
         }
 
         if (ratesBatch.length >= BATCH_SIZE) {
-            await axios.post(`${RATES_SERVICE_URL}/rates/bulk`, {
-                provider_id: providerId,
-                rates: ratesBatch,
-            });
+            await flushBatch(ratesBatch, sessionId, providerId, userId);
             processedCount += ratesBatch.length;
             ratesBatch = [];
 
             const percent = Math.round((processedCount / total) * 100);
             await job.updateProgress(percent);
-
             await emitUploadEvent({
-                type: 'UPLOAD_PROGRESS',
+                type:      'UPLOAD_PROGRESS',
                 sessionId,
                 userId,
-                scope: 'global',
+                scope:     'global',
                 processed: processedCount,
                 total,
                 percent,
@@ -71,95 +72,170 @@ const processWorker = new Worker('etl-process', async (job) => {
 
     // Flush remaining rows
     if (ratesBatch.length > 0) {
-        await axios.post(`${RATES_SERVICE_URL}/rates/bulk`, {
-            provider_id: providerId,
-            rates: ratesBatch,
-        });
+        await flushBatch(ratesBatch, sessionId, providerId, userId);
         processedCount += ratesBatch.length;
     }
 
-    if (logId) {
-        await db.query(`UPDATE upload_logs SET status = 'completed' WHERE id = ?`, [logId]);
-    }
+    if (logId) await db.query(`UPDATE upload_logs SET status = 'completed' WHERE id = ?`, [logId]);
 
     await emitUploadEvent({
-        type: 'UPLOAD_COMPLETE',
+        type:      'UPLOAD_COMPLETE',
         sessionId,
         userId,
-        scope: 'global',
-        total: processedCount,
+        scope:     'global',
+        total:     processedCount,
         providerId,
     });
 
     return { status: 'completed', processed: processedCount };
 }, { connection });
 
-processWorker.on('progress', (job, progress) => {
-    console.log(`⚙️ [process-worker] job ${job.id} — ${progress}%`);
-});
-
-processWorker.on('completed', (job, result) => {
-    console.log(`✅ [process-worker] job ${job.id} done:`, result);
-});
-
-processWorker.on('failed', (job, err) => {
-    console.error(`❌ [process-worker] job ${job?.id} failed (attempt ${job?.attemptsMade}): ${err.message}`);
-});
+processWorker.on('progress',   (job, pct)  => console.log(`⚙️  [process-worker] job ${job.id} — ${pct}%`));
+processWorker.on('completed',  (job, res)  => console.log(`✅ [process-worker] job ${job.id} done:`, res));
+processWorker.on('failed',     (job, err)  => console.error(`❌ [process-worker] job ${job?.id} failed: ${err.message}`));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+async function flushBatch(rates, sessionId, providerId, userId) {
+    await redis.publish(ETL_CHANNEL, JSON.stringify({
+        type: 'ETL_BATCH',
+        sessionId,
+        providerId,
+        userId,
+        rates,
+    }));
+}
+
+/** Find the raw utility name value from the row using the admin mapping. */
 function resolveUtilityColumn(row, mapping) {
-    // mapping is { sourceColumn: 'canonical_key', ... } from FE column mapper
-    // Falls back to common column names if no mapping provided
     if (mapping) {
         const utilKey = Object.keys(mapping).find(k =>
-            ['utility', 'ldc', 'distributor'].includes(mapping[k]?.toLowerCase())
+            UTILITY_KEYS.includes(mapping[k]?.toLowerCase())
         );
         if (utilKey) return row[utilKey] || null;
     }
-    return row['Utility'] || row['utility'] || row['LDC'] || row['ldc'] || null;
+    // Fallback: scan row keys for any utility alias
+    for (const alias of UTILITY_KEYS) {
+        const found = Object.keys(row).find(k => k.toLowerCase() === alias);
+        if (found && row[found]) return row[found];
+    }
+    return null;
 }
 
+/**
+ * Build a full rate object from a single Excel row.
+ * Uses the admin mapping first, falls back to fuzzy key scan.
+ */
 function buildRateObject(row, utilityId, mapping) {
+    // Returns the value from the row whose mapped canonical key matches `canonical`
     const get = (canonical) => {
         if (mapping) {
-            const key = Object.keys(mapping).find(k => mapping[k]?.toLowerCase() === canonical);
-            if (key && row[key] !== undefined) return row[key];
+            const key = Object.keys(mapping).find(k =>
+                mapping[k]?.toLowerCase() === canonical.toLowerCase()
+            );
+            if (key !== undefined && row[key] !== undefined && row[key] !== '') return row[key];
         }
-        const fallbackKey = Object.keys(row).find(k => k.toLowerCase().includes(canonical));
-        return fallbackKey ? row[fallbackKey] : null;
+        // Fallback: loose key match
+        const fallback = Object.keys(row).find(k =>
+            k.toLowerCase().replace(/[^a-z]/g, '') === canonical.replace(/_/g, '')
+        );
+        return fallback ? row[fallback] : null;
     };
 
-    let rateValue = get('rate') ?? get('price');
-    const term = get('term') ?? get('duration');
-    const commodity = get('commodity') ?? 'ELECTRIC';
+    // ── Commodity ─────────────────────────────────────────────────────────
+    const rawCommodity = (get(CANONICAL.COMMODITY) ?? 'Electric').toString().trim().toLowerCase();
+    const commodity    = rawCommodity.startsWith('gas') ? 'Gas' : 'Electric';
 
-    if (typeof rateValue === 'number' && commodity === 'ELECTRIC' && rateValue > 5) {
+    // ── Unit ──────────────────────────────────────────────────────────────
+    const unit = get(CANONICAL.UNIT) || (commodity === 'Gas' ? 'Therms' : 'kWh');
+
+    // ── Rate value ────────────────────────────────────────────────────────
+    let rateValue = parseDecimal(get(CANONICAL.RATE_VALUE));
+    // Electric rates sometimes arrive in cents (> 5 $/kWh is physically impossible)
+    if (rateValue !== null && commodity === 'Electric' && rateValue > 5) {
         rateValue = rateValue / 100;
     }
 
-    const attributes = { ...row };
-    ['rate', 'price', 'term', 'duration', 'utility', 'ldc', 'commodity'].forEach(ck => {
-        Object.keys(row).forEach(k => {
-            if (k.toLowerCase().includes(ck)) delete attributes[k];
+    // ── Term ──────────────────────────────────────────────────────────────
+    const term = parseInt(get(CANONICAL.TERM)) || null;
+
+    // ── PTC ───────────────────────────────────────────────────────────────
+    const ptc = parseDecimal(get(CANONICAL.PTC));
+
+    // ── MSF ───────────────────────────────────────────────────────────────
+    const msf = parseDecimal(get(CANONICAL.MSF));
+
+    // ── String fields ─────────────────────────────────────────────────────
+    const str = (key) => {
+        const v = get(key);
+        return v !== null && v !== undefined ? String(v).trim() : null;
+    };
+
+    // ── attributes: everything NOT mapped to a core column ────────────────
+    // Build a Set of all Excel column names that are mapped to core keys
+    const coreExcelKeys = new Set();
+    if (mapping) {
+        Object.entries(mapping).forEach(([excelCol, canonical]) => {
+            if (CORE_KEYS.includes(canonical?.toLowerCase())) {
+                coreExcelKeys.add(excelCol);
+            }
         });
+    }
+    const attributes = {};
+    Object.keys(row).forEach(k => {
+        if (!coreExcelKeys.has(k) && row[k] !== '' && row[k] !== null && row[k] !== undefined) {
+            attributes[k] = row[k];
+        }
     });
 
     return {
-        utility_id: utilityId,
-        rate_value: typeof rateValue === 'number' ? rateValue : null,
-        term: typeof term === 'number' ? term : parseInt(term) || 0,
-        commodity: commodity.toUpperCase(),
-        attributes,
+        external_id:      str(CANONICAL.EXTERNAL_ID),
+        company_dba_name: str(CANONICAL.COMPANY_DBA_NAME),
+        product:          str(CANONICAL.PRODUCT),
+        state:            str(CANONICAL.STATE),
+        pricing_type:     str(CANONICAL.PRICING_TYPE),
+        segment:          str(CANONICAL.SEGMENT),
+        cancellation:     str(CANONICAL.CANCELLATION),
+        utility_id:       utilityId,
+        commodity,
+        unit,
+        rate_value:       rateValue,
+        ptc,
+        msf,
+        term,
+        attributes:       Object.keys(attributes).length > 0 ? attributes : null,
     };
 }
 
+/** Parse a value to float, stripping currency symbols and whitespace. */
+function parseDecimal(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const cleaned = String(value).replace(/[^0-9.\-]/g, '');
+    const parsed  = parseFloat(cleaned);
+    return isNaN(parsed) ? null : parsed;
+}
+
+/** Resolve utility name → utility_id via alias table then canonical name. */
 async function callResolveUtility(name) {
     try {
-        const res = await axios.post(`${RATES_SERVICE_URL}/utilities/resolve`, { dirtyName: name });
-        if (res.data.success) return res.data.utilityId;
-    } catch (_) {
-        return null;
+        const normalized = (name || '').trim().toUpperCase();
+
+        // 1. Try alias table first (dirty names from Excel)
+        const [aliasRows] = await db.query(
+            'SELECT utility_id FROM utility_aliases WHERE UPPER(TRIM(dirty_name)) = ?',
+            [normalized]
+        );
+        if (aliasRows.length > 0) return aliasRows[0].utility_id;
+
+        // 2. Fallback: canonical utility name (exact match)
+        const [utilRows] = await db.query(
+            'SELECT id FROM utilities WHERE UPPER(TRIM(nombre)) = ?',
+            [normalized]
+        );
+        if (utilRows.length > 0) return utilRows[0].id;
+
+    } catch (err) {
+        console.error('❌ [process.worker] resolveUtility DB error:', err.message);
     }
     return null;
 }

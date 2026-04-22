@@ -1,14 +1,27 @@
 const db = require('../config/db');
 
 class UtilityModel {
+  /** Returns all utilities ordered alphabetically — used by the alias resolver UI */
+  static async findAll() {
+    const [rows] = await db.query(
+      'SELECT id, nombre, market FROM utilities ORDER BY nombre ASC'
+    );
+    return rows;
+  }
+
   static async resolveAlias(dirtyName) {
-    // 1. Try exact match in aliases
-    const [rows] = await db.query('SELECT utility_id FROM utility_aliases WHERE dirty_name = ?', [dirtyName]);
+    const [rows] = await db.query(
+      'SELECT utility_id FROM utility_aliases WHERE UPPER(TRIM(dirty_name)) = UPPER(TRIM(?))',
+      [dirtyName]
+    );
     if (rows.length > 0) return rows[0].utility_id;
 
-    // 2. Try exact match in utilities table? (If we had one)
-    // const [utils] = await db.query('SELECT id FROM utilities WHERE name = ?', [dirtyName]);
-    // if (utils.length > 0) return utils[0].id;
+    // Fallback: nombre canónico exacto en utilities
+    const [utils] = await db.query(
+      'SELECT id FROM utilities WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(?))',
+      [dirtyName]
+    );
+    if (utils.length > 0) return utils[0].id;
 
     return null;
   }

@@ -12,13 +12,23 @@ import dotenv from 'dotenv';
 import Redis from 'ioredis';
 import { pubsub } from './pubsub.js';
 
-// --- Standalone Redis subscriber for UPLOAD_EVENTS + presence:typing ---
-// We use a separate ioredis connection in subscriber mode (pubsub.js already has publisher).
+// --- Standalone Redis connections for gateway-level pub/sub ---
+// redisSub: subscriber-mode (can only receive, needed for bridging channels to GraphQL WS)
+// redisPub: command-mode (can publish + run commands like EXISTS)
 const redisSub = new Redis({
   host: process.env.REDIS_HOST || 'redis',
   port: parseInt(process.env.REDIS_PORT) || 6379,
   retryStrategy: times => Math.min(times * 50, 2000)
 });
+
+const redisPub = new Redis({
+  host: process.env.REDIS_HOST || 'redis',
+  port: parseInt(process.env.REDIS_PORT) || 6379,
+  retryStrategy: times => Math.min(times * 50, 2000)
+});
+
+redisPub.on('connect', () => console.log('✅ Gateway redisPub connected'));
+redisPub.on('error', (err) => console.error('❌ Gateway redisPub error:', err.message));
 
 redisSub.subscribe('UPLOAD_EVENTS', 'presence:typing', (err) => {
   if (err) console.error('❌ Redis subscribe failed:', err.message);
@@ -105,12 +115,13 @@ const subscriptionTypeDefs = `
   }
 
   type UploadEventPayload {
-    type: String!          # UPLOAD_STARTED | PARSE_COMPLETE | UPLOAD_PROGRESS | MISSING_ALIAS | UPLOAD_COMPLETE
+    type: String!          # UPLOAD_STARTED | PARSE_COMPLETE | UPLOAD_PROGRESS | AWAITING_USER | UPLOAD_COMPLETE
     sessionId: String!
     userId: String         # Owner of the session (used for local vs global routing on FE)
     scope: String          # 'local' | 'global'
     filename: String
-    dirtyName: String      # For MISSING_ALIAS events
+    dirtyName: String      # For AWAITING_USER events — the unresolved alias
+    message: String        # Human-readable description for AWAITING_USER events
     processed: Int
     total: Int
     percent: Int
@@ -130,10 +141,37 @@ const subscriptionTypeDefs = `
     timestamp: String
   }
 
+  type ConfirmUploadResult {
+    success: Boolean!
+    message: String
+  }
+
+  # Returned after the file is stored in Redis + MinIO by the upload-service.
+  type UploadResult {
+    sessionId: String!
+    headers: [String!]!
+    rowCount: Int!
+  }
+
   type Mutation {
     setPresence(action: String!): Boolean
+
+    # ADR-002: Frontend calls this instead of the REST /api/upload endpoint.
+    # Gateway receives the file as base64, re-signs a short-lived internal token,
+    # then calls upload-service container-to-container (allowed per ADR-002).
+    # fileBase64: result of FileReader.readAsDataURL(...).split(',')[1]
+    uploadFile(fileBase64: String!, filename: String!): UploadResult!
+
+    # FE sends this after the column-mapping step. Gateway publishes ETL_START to Redis.
+    # upload-service subscriber enqueues the BullMQ job.
+    # rates-service subscriber runs clearDrafts.
+    # mappingJson: JSON.stringify({ excelHeader: 'canonical_key', ... })
+    confirmUpload(sessionId: String!, providerId: Int!, mappingJson: String): ConfirmUploadResult!
   }
 `;
+
+// Internal URL for container-to-container calls (allowed per ADR-002)
+const UPLOAD_SERVICE_INTERNAL = process.env.UPLOAD_SERVICE_URL || 'http://upload-service:4005';
 
 const subscriptionResolvers = {
   Subscription: {
@@ -148,8 +186,77 @@ const subscriptionResolvers = {
     },
   },
   Mutation: {
+    uploadFile: async (_, { fileBase64, filename }, context) => {
+      const userId = context.user?.id?.toString() || 'unknown';
+
+      // Re-sign a short-lived internal token so upload-service can validate auth.
+      // The user is already verified by the gateway at this point.
+      const internalToken = jwt.sign(
+        { id: context.user?.id, rol: context.user?.rol, nombre: context.user?.nombre },
+        process.env.JWT_SECRET,
+        { expiresIn: '60s' }
+      );
+
+      // Decode base64 → Buffer → Blob so FormData can carry it as a real file
+      const buffer = Buffer.from(fileBase64, 'base64');
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      const form = new FormData();
+      form.append('file', blob, filename);
+
+      const response = await fetch(`${UPLOAD_SERVICE_INTERNAL}/api/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${internalToken}`,
+          'x-user-id': userId,
+        },
+        body: form,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`upload-service error ${response.status}: ${text}`);
+      }
+
+      const result = await response.json();
+      // upload-service returns { success, sessionId, headers, rowCount, ... }
+      return {
+        sessionId: result.sessionId,
+        headers:   result.headers  ?? [],
+        rowCount:  result.rowCount ?? 0,
+      };
+    },
+
+    confirmUpload: async (_, { sessionId, providerId, mappingJson }, context) => {
+      const userId = context.user?.id?.toString() || 'unknown';
+
+      // Validate session still alive in Redis before publishing
+      const exists = await redisPub.exists(`upload:${sessionId}:file`);
+      if (!exists) {
+        return { success: false, message: 'Sesión expirada o no encontrada. Sube el archivo de nuevo.' };
+      }
+
+      let mapping = null;
+      if (mappingJson) {
+        try { mapping = JSON.parse(mappingJson); } catch { /* mapping stays null */ }
+      }
+
+      await redisPub.publish('ETL_EVENTS', JSON.stringify({
+        type: 'ETL_START',
+        sessionId,
+        providerId,
+        mapping,
+        userId,
+        timestamp: new Date().toISOString(),
+      }));
+
+      console.log(`📡 [gateway] ETL_START published session=${sessionId?.slice(-6)} provider=${providerId}`);
+      return { success: true, message: 'ETL iniciado' };
+    },
+
     setPresence: async (_, { action }, context) => {
-      // The context is injected by the WS useServer function below
       const payload = {
         userId: context.user?.id?.toString() || 'anonymous',
         userName: context.user?.nombre || 'Agent',
@@ -158,10 +265,9 @@ const subscriptionResolvers = {
         action,
         timestamp: new Date().toISOString()
       };
-      // Emits purely in-memory/Redis, no DB hits
       await pubsub.publish('PRESENCE_TYPING', { presenceTyping: payload });
       return true;
-    }
+    },
   }
 };
 
@@ -178,9 +284,11 @@ console.log('[DEBUG] subscriptionSchema __validationErrors:', subscriptionSchema
 const httpServer = createServer(app);
 
 // Configurar WebSocket Server para Subscriptions
+// maxPayload: 20 MB — covers base64-encoded Excel files (~7 MB for large rate sheets).
 const wsServer = new WebSocketServer({
   server: httpServer,
   path: '/graphql',
+  maxPayload: 20 * 1024 * 1024,
 });
 
 // Activar el servidor de suscripciones
@@ -190,16 +298,26 @@ const serverCleanup = useServer({
   // "Query root type must be provided" y rompe el subscription silenciosamente.
   // graphql-ws maneja la validación por defecto correctamente.
   context: (ctx, msg, args) => {
-    // Inject user context from WS connection params
     let user = null;
-    const token = ctx.connectionParams?.Authorization?.split(' ')[1] || ctx.connectionParams?.authToken;
-    if (token && process.env.JWT_SECRET) {
-      try {
-        user = jwt.verify(token, process.env.JWT_SECRET);
-      } catch (e) {
-        // Ignorar para permit anónimos si se desea
+
+    // ── 1. connectionParams Authorization (sent by Apollo Client wsLink) ──────
+    const paramToken = ctx.connectionParams?.Authorization?.split(' ')[1];
+    if (paramToken && process.env.JWT_SECRET) {
+      try { user = jwt.verify(paramToken, process.env.JWT_SECRET); } catch {}
+    }
+
+    // ── 2. Fallback: WS upgrade request cookie ────────────────────────────────
+    // The browser sends ALL cookies (including HttpOnly) in the HTTP headers of
+    // the WS upgrade request. Apollo Client's connectionParams can't read
+    // HttpOnly cookies, so we fall back to the raw upgrade headers here.
+    // ctx.extra.request is the IncomingMessage from the WS handshake.
+    if (!user && ctx.extra?.request?.headers?.cookie) {
+      const match = ctx.extra.request.headers.cookie.match(/(?:^|;\s*)nwfg_token=([^;]+)/);
+      if (match?.[1] && process.env.JWT_SECRET) {
+        try { user = jwt.verify(match[1], process.env.JWT_SECRET); } catch {}
       }
     }
+
     return { user };
   },
   onConnect: (ctx) => {
@@ -240,7 +358,9 @@ const corsOptions = {
   credentials: true,  // Necesario para que las cookies HttpOnly viajen cross-origin
 };
 app.use(cors(corsOptions));
-app.use(express.json());
+// 20 MB limit — base64-encoded Excel files can reach ~7 MB for large rate sheets.
+// Apollo Server v4's expressMiddleware detects pre-parsed body and skips re-parsing.
+app.use(express.json({ limit: '20mb' }));
 
 
 // Endpoint de salud

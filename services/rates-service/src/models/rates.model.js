@@ -19,16 +19,17 @@ class RateModel {
       : "status = 'active'";
 
     const query = `
-        SELECT 
-            JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.State')) as state_code,
-            JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.raw_utility_name')) as utility_name,
-            commodity,
-            COUNT(*) as rate_count
-        FROM rates
+        SELECT
+            r.state                AS state_code,
+            u.nombre               AS utility_name,
+            r.commodity,
+            COUNT(*)               AS rate_count
+        FROM rates r
+        LEFT JOIN utilities u ON u.id = r.utility_id
         WHERE ${statusCondition}
-        GROUP BY state_code, utility_name, commodity
-        HAVING state_code IS NOT NULL
-        ORDER BY state_code, utility_name;
+          AND r.state IS NOT NULL
+        GROUP BY r.state, u.nombre, r.commodity
+        ORDER BY r.state, u.nombre;
     `;
 
     const [rows] = await db.query(query);
@@ -123,47 +124,73 @@ class RateModel {
     return rows;
   }
 
+  // Llamar UNA SOLA VEZ antes de iniciar el ETL (desde upload.controller.js /confirm).
+  // Nunca desde bulkInsert para no perder batches anteriores del mismo proceso.
+  static async clearDrafts(providerId) {
+    await db.execute(
+      `DELETE FROM rates WHERE provider_id = ? AND status = 'draft'`,
+      [providerId]
+    );
+  }
+
   // Para ADR 007: Lógica de Ingesta Masiva
   static async bulkInsert(providerId, rates) {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
 
-      // 1. Limpieza: Borrar DRAFTS anteriores de este provider
-      // PRECAUCIÓN: Esto asume que toda ingesta reemplaza el borrador anterior
-      await connection.execute(
-        `DELETE FROM rates WHERE provider_id = ? AND status = 'draft'`,
-        [providerId]
-      );
-
-      // 2. Insertar nuevos registros
       for (const rate of rates) {
-        const query = `INSERT INTO rates 
-          (provider_id, utility_id, commodity, rate_value, term, status, attributes) 
-          VALUES (?, ?, ?, ?, ?, 'draft', ?)`;
+        const attributesJson = rate.attributes ? JSON.stringify(rate.attributes) : null;
 
-        // Serializar attributes a JSON string
-        const attributesJson = JSON.stringify(rate.attributes || {});
-
-        await connection.execute(query, [
-          String(providerId), // Asegurar consistencia
-          rate.utility_id,
-          rate.commodity,
-          rate.rate_value,
-          rate.term,
-          attributesJson
-        ]);
+        await connection.execute(
+          `INSERT INTO rates (
+              provider_id,
+              utility_id,
+              external_id,
+              company_dba_name,
+              product,
+              state,
+              pricing_type,
+              segment,
+              commodity,
+              unit,
+              rate_value,
+              ptc,
+              msf,
+              term,
+              cancellation,
+              status,
+              attributes
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
+          [
+            String(providerId),
+            rate.utility_id       ?? null,
+            rate.external_id      ?? null,
+            rate.company_dba_name ?? null,
+            rate.product          ?? null,
+            rate.state            ?? null,
+            rate.pricing_type     ?? null,
+            rate.segment          ?? null,
+            rate.commodity,
+            rate.unit || (rate.commodity === 'Gas' ? 'Therms' : 'kWh'),
+            rate.rate_value       ?? null,
+            rate.ptc              ?? null,
+            rate.msf              ?? null,
+            rate.term             ?? null,
+            rate.cancellation     ?? null,
+            attributesJson,
+          ]
+        );
       }
 
       await connection.commit();
 
-      // Publish Event (Fire and Forget)
       pubsub.publish('RATE_UPDATED', {
         ratesUpdated: {
           provider_id: providerId,
-          count: rates.length,
-          timestamp: new Date().toISOString()
-        }
+          count:       rates.length,
+          timestamp:   new Date().toISOString(),
+        },
       }).catch(err => console.error('❌ PubSub Error:', err));
 
       return { success: true, count: rates.length };

@@ -28,17 +28,48 @@ const typeDefs = gql`
     rateCount: Int
   }
 
+  # Flat utility record — used by the alias resolver dropdown
+  type UtilityItem {
+    id: ID!
+    nombre: String!
+    market: String!
+  }
+
+  # Active energy provider — used by the ETL wizard provider selector
+  type ProviderItem {
+    id: ID!
+    nombre: String!
+    logo_url: String
+    spl_slug: String
+  }
+
   type State {
     code: String!
     utilities: [Utility]
   }
 
+  type AliasResult {
+    success: Boolean!
+    message: String
+  }
+
   type Query {
     # Filtros dinámicos para el grid
     getRates(provider_id: ID, state: String, utilityId: ID): [Rate]
-    
+
     # Estructura del mercado (Metadata para el Grid)
     getMarketStructure: [State]
+
+    # Full utility catalog — for alias resolver dropdown
+    getUtilities: [UtilityItem!]!
+
+    # Active provider catalog — for ETL wizard provider selector
+    getProviders: [ProviderItem!]!
+  }
+
+  extend type Mutation {
+    # Create or update a dirty-name → utility_id alias (alias resolver UI)
+    createAlias(dirtyName: String!, utilityId: Int!): AliasResult!
   }
 
   extend type Subscription {

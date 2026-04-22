@@ -2,9 +2,10 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// ── Boot BullMQ workers before anything else ──────────────────────────────────
+// ── Boot BullMQ workers + Redis event subscriber ─────────────────────────────
 require('./src/workers/audit.worker');
 require('./src/workers/process.worker');
+require('./src/events/etl.subscriber'); // ETL_START → enqueue process job
 
 // ── Bull Board UI ─────────────────────────────────────────────────────────────
 const { createBullBoard } = require('@bull-board/api');

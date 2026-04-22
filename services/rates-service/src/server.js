@@ -85,3 +85,6 @@ async function startServer() {
 startServer().catch(err => {
     console.error("❌ Error fatal al iniciar:", err);
 });
+
+// Boot ETL event subscriber after server starts
+require('./events/etl.subscriber');

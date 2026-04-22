@@ -1,9 +1,22 @@
-const RatesModel = require('../models/rates.model');
+const RatesModel     = require('../models/rates.model');
+const UtilityModel   = require('../models/utilities.model');
+const ProvidersModel = require('../models/providers.model');
 const { GraphQLJSON } = require('graphql-type-json');
 const pubsub = require('../config/pubsub');
 
 const resolvers = {
   JSON: GraphQLJSON,
+  Mutation: {
+    createAlias: async (_, { dirtyName, utilityId }) => {
+      try {
+        await UtilityModel.createAlias(dirtyName.trim(), utilityId);
+        return { success: true, message: `Alias "${dirtyName}" creado correctamente` };
+      } catch (err) {
+        console.error('[createAlias] error:', err.message);
+        return { success: false, message: err.message };
+      }
+    },
+  },
   Subscription: {
     ratesUpdated: {
       subscribe: () => pubsub.asyncIterator(['RATE_UPDATED'])
@@ -15,6 +28,14 @@ const resolvers = {
       const userRole = context.req.headers['x-user-role'];
       const includeDrafts = userRole === 'ADMIN' || userRole === 'QA';
       return await RatesModel.findAll({ provider_id, state, utilityId, includeDrafts });
+    },
+
+    getUtilities: async () => {
+      return await UtilityModel.findAll();
+    },
+
+    getProviders: async () => {
+      return await ProvidersModel.getAll();
     },
 
     // Nueva Query: Estructura del Mercado (Grid)

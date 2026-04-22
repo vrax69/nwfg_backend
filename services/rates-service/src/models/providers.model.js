@@ -1,6 +1,6 @@
 // src/models/providers.model.js
 
-const { userPool } = require('../config/db'); // Usamos el pool correcto: userPool
+const pool = require('../config/db');
 
 const ProvidersModel = {
 
@@ -8,13 +8,10 @@ const ProvidersModel = {
     // GET ALL PROVIDERS
     // ================================
     async getAll() {
-        // Consultamos la tabla 'proveedores' en el esquema user_data_tpv_staging
-        const [rows] = await userPool.query(`
-            SELECT 
-                id, 
-                nombre, 
-                codigo 
-            FROM proveedores
+        const [rows] = await pool.query(`
+            SELECT id, nombre, logo_url, spl_slug
+            FROM providers
+            WHERE status = 'active'
             ORDER BY nombre ASC
         `);
         return rows;
@@ -24,15 +21,8 @@ const ProvidersModel = {
     // GET PROVIDER BY ID
     // ================================
     async getById(id) {
-        const [rows] = await userPool.query(
-            `
-            SELECT 
-                id, 
-                nombre, 
-                codigo 
-            FROM proveedores
-            WHERE id = ?
-            `,
+        const [rows] = await pool.query(
+            `SELECT id, nombre FROM providers WHERE id = ?`,
             [id]
         );
         return rows[0] || null;

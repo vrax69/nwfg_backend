@@ -160,3 +160,25 @@ WHERE NOT EXISTS (SELECT 1 FROM providers WHERE nombre = 'ConEd');
 INSERT INTO utilities (nombre, market, alias_match)
 SELECT 'Con Edison', 'Electric', '["ConEd","Con Edison","ConEdison"]'
 WHERE NOT EXISTS (SELECT 1 FROM utilities WHERE nombre = 'Con Edison');
+
+INSERT INTO utilities (nombre, market, alias_match)
+SELECT 'National Grid', 'Electric', '["National Grid","NationalGrid","Nat Grid"]'
+WHERE NOT EXISTS (SELECT 1 FROM utilities WHERE nombre = 'National Grid');
+
+-- National Grid también distribuye Gas en NY
+INSERT INTO utilities (nombre, market, alias_match)
+SELECT 'National Grid Gas', 'Gas', '["National Grid Gas","NatGrid Gas"]'
+WHERE NOT EXISTS (SELECT 1 FROM utilities WHERE nombre = 'National Grid Gas');
+
+-- Aliases dirty-name → utility_id (se resuelven en el ETL)
+INSERT IGNORE INTO utility_aliases (dirty_name, utility_id)
+SELECT 'Con Edison',    id FROM utilities WHERE nombre = 'Con Edison';
+
+INSERT IGNORE INTO utility_aliases (dirty_name, utility_id)
+SELECT 'ConEd',         id FROM utilities WHERE nombre = 'Con Edison';
+
+INSERT IGNORE INTO utility_aliases (dirty_name, utility_id)
+SELECT 'National Grid', id FROM utilities WHERE nombre = 'National Grid';
+
+INSERT IGNORE INTO utility_aliases (dirty_name, utility_id)
+SELECT 'National Grid Gas', id FROM utilities WHERE nombre = 'National Grid Gas';
