@@ -76,6 +76,26 @@ const resolvers = {
         return { success: false, message: err.message };
       }
     },
+
+    reassignRates: async (_, { fromUtilityId, toUtilityId }) => {
+      try {
+        const count = await RatesModel.reassignToUtility(fromUtilityId, toUtilityId);
+        return { success: true, count, message: `${count} tarifa(s) reasignada(s)` };
+      } catch (err) {
+        console.error('[reassignRates] error:', err.message);
+        return { success: false, count: 0, message: err.message };
+      }
+    },
+
+    deleteRatesForUtility: async (_, { utilityId }) => {
+      try {
+        const count = await RatesModel.deleteByUtilityId(utilityId);
+        return { success: true, count, message: `${count} tarifa(s) eliminada(s)` };
+      } catch (err) {
+        console.error('[deleteRatesForUtility] error:', err.message);
+        return { success: false, count: 0, message: err.message };
+      }
+    },
   },
   Subscription: {
     ratesUpdated: {
@@ -98,12 +118,11 @@ const resolvers = {
       return await ProvidersModel.getAll();
     },
 
-    getRatesAdmin: async (_, { provider_id, state, commodity, search, limit, offset }, context) => {
+    getRatesAdmin: async (_, { provider_id, state, commodity, search, utilityId, limit, offset }, context) => {
       const userRole = (context.req.headers['x-user-role'] || '').toUpperCase();
-      // Accepts NWFG_ADMIN, FIS_ADMIN, QA_AGENT (as produced by users-service mapRole)
       const allowed = userRole.includes('ADMIN') || userRole.includes('QA');
       if (!allowed) throw new Error('No autorizado');
-      return await RatesModel.findAllAdmin({ provider_id, state, commodity, search, limit, offset });
+      return await RatesModel.findAllAdmin({ provider_id, state, commodity, search, utilityId, limit, offset });
     },
 
     // Nueva Query: Estructura del Mercado (Grid)

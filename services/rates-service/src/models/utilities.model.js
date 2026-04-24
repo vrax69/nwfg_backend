@@ -62,8 +62,15 @@ class UtilityModel {
     return row || null;
   }
 
-  /** Hard-delete a utility by ID. */
+  /** Hard-delete a utility by ID.
+   *  Nulls out rates.utility_id and removes aliases first to avoid FK violations.
+   */
   static async deleteById(id) {
+    // 1. Disassociate rates — their utility_id becomes NULL (as warned in the UI)
+    await db.execute('UPDATE rates SET utility_id = NULL WHERE utility_id = ?', [id]);
+    // 2. Remove all dirty-name aliases pointing to this utility
+    await db.execute('DELETE FROM utility_aliases WHERE utility_id = ?', [id]);
+    // 3. Now safe to delete the utility itself
     const [result] = await db.execute('DELETE FROM utilities WHERE id = ?', [id]);
     return result.affectedRows > 0;
   }

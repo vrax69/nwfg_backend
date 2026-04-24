@@ -131,6 +131,12 @@ const typeDefs = gql`
     message: String
   }
 
+  type BulkOperationResult {
+    success: Boolean!
+    count: Int!
+    message: String
+  }
+
   type Query {
     # Filtros dinámicos para el grid
     getRates(provider_id: ID, state: String, utilityId: ID): [Rate]
@@ -150,6 +156,7 @@ const typeDefs = gql`
       state: String
       commodity: String
       search: String
+      utilityId: ID
       limit: Int
       offset: Int
     ): RatesAdminPage!
@@ -173,6 +180,12 @@ const typeDefs = gql`
 
     # Delete a utility from the catalog
     deleteUtility(id: ID!): DeleteRateResult!
+
+    # Bulk-reassign all rates from one utility to another (used before deleting a utility)
+    reassignRates(fromUtilityId: ID!, toUtilityId: ID!): BulkOperationResult!
+
+    # Hard-delete all rates belonging to a utility
+    deleteRatesForUtility(utilityId: ID!): BulkOperationResult!
   }
 
   extend type Subscription {

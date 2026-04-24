@@ -129,7 +129,7 @@ class RateModel {
    * Admin-facing paginated rate list with joined provider/utility names.
    * Returns { items, total } for the RatesEditor table.
    */
-  static async findAllAdmin({ provider_id, state, commodity, search, limit = 50, offset = 0 } = {}) {
+  static async findAllAdmin({ provider_id, state, commodity, search, utilityId, limit = 50, offset = 0 } = {}) {
     let where = "WHERE r.status IN ('active','draft')";
     const params = [];
 
@@ -144,6 +144,10 @@ class RateModel {
     if (commodity) {
       where += ' AND r.commodity = ?';
       params.push(commodity);
+    }
+    if (utilityId) {
+      where += ' AND r.utility_id = ?';
+      params.push(utilityId);
     }
     if (search) {
       where += ' AND (r.product LIKE ? OR r.company_dba_name LIKE ? OR u.nombre LIKE ?)';
@@ -216,6 +220,21 @@ class RateModel {
   static async deleteById(id) {
     const [result] = await db.execute('DELETE FROM rates WHERE id = ?', [id]);
     return result.affectedRows > 0;
+  }
+
+  /** Bulk-reassign all rates from one utility to another. Returns affected count. */
+  static async reassignToUtility(fromUtilityId, toUtilityId) {
+    const [result] = await db.execute(
+      'UPDATE rates SET utility_id = ? WHERE utility_id = ?',
+      [toUtilityId, fromUtilityId]
+    );
+    return result.affectedRows;
+  }
+
+  /** Hard-delete all rates belonging to a utility. Returns affected count. */
+  static async deleteByUtilityId(utilityId) {
+    const [result] = await db.execute('DELETE FROM rates WHERE utility_id = ?', [utilityId]);
+    return result.affectedRows;
   }
 
   // Llamar UNA SOLA VEZ antes de iniciar el ETL (desde upload.controller.js /confirm).
