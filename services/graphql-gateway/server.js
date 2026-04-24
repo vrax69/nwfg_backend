@@ -297,24 +297,32 @@ const serverCleanup = useServer({
   // validate eliminado — el custom validate llamaba gqlValidate que tira
   // "Query root type must be provided" y rompe el subscription silenciosamente.
   // graphql-ws maneja la validación por defecto correctamente.
-  context: (ctx, msg, args) => {
+  context: async (ctx, msg, args) => {
     let user = null;
+    let decoded = null;
 
-    // ── 1. connectionParams Authorization (sent by Apollo Client wsLink) ──────
+    // ── 1. connectionParams Authorization ────────────────────────────────────
     const paramToken = ctx.connectionParams?.Authorization?.split(' ')[1];
     if (paramToken && process.env.JWT_SECRET) {
-      try { user = jwt.verify(paramToken, process.env.JWT_SECRET); } catch {}
+      try { decoded = jwt.verify(paramToken, process.env.JWT_SECRET); } catch {}
     }
 
-    // ── 2. Fallback: WS upgrade request cookie ────────────────────────────────
-    // The browser sends ALL cookies (including HttpOnly) in the HTTP headers of
-    // the WS upgrade request. Apollo Client's connectionParams can't read
-    // HttpOnly cookies, so we fall back to the raw upgrade headers here.
-    // ctx.extra.request is the IncomingMessage from the WS handshake.
-    if (!user && ctx.extra?.request?.headers?.cookie) {
+    // ── 2. Fallback: HttpOnly cookie from WS upgrade request ─────────────────
+    if (!decoded && ctx.extra?.request?.headers?.cookie) {
       const match = ctx.extra.request.headers.cookie.match(/(?:^|;\s*)nwfg_token=([^;]+)/);
       if (match?.[1] && process.env.JWT_SECRET) {
-        try { user = jwt.verify(match[1], process.env.JWT_SECRET); } catch {}
+        try { decoded = jwt.verify(match[1], process.env.JWT_SECRET); } catch {}
+      }
+    }
+
+    // ── 3. Redis session check — same real-time invalidation as HTTP ──────────
+    if (decoded) {
+      if (decoded.jti) {
+        const alive = await redisPub.exists(`sess:${decoded.jti}`);
+        if (alive) user = decoded;
+        else console.warn(`⚠️  [gateway WS] Session revoked jti=${decoded.jti?.slice(0, 8)}…`);
+      } else {
+        user = decoded; // legacy token — no jti
       }
     }
 
@@ -390,7 +398,24 @@ app.use('/graphql', expressMiddleware(server, {
 
     if (token && process.env.JWT_SECRET) {
       try {
-        user = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        // ── Redis session check — real-time session invalidation ─────────────
+        // Every request validates that sess:{jti} still exists in Redis.
+        // Deleting it (logout / invalidateAllSessions) immediately kills the
+        // session on the next request — no token expiry needed.
+        if (decoded.jti) {
+          const alive = await redisPub.exists(`sess:${decoded.jti}`);
+          if (alive) {
+            user = decoded;
+          } else {
+            console.warn(`⚠️  [gateway] Session revoked for jti=${decoded.jti?.slice(0, 8)}…`);
+          }
+        } else {
+          // Legacy tokens without jti (issued before this change) — accept but warn
+          console.warn('⚠️  [gateway] Token without jti — consider re-login');
+          user = decoded;
+        }
       } catch {
         console.warn('⚠️ Token inválido o expirado');
       }
@@ -402,8 +427,6 @@ app.use('/graphql', expressMiddleware(server, {
     }
 
     // Bloquear peticiones no autenticadas (excepto login e introspection)
-    // Usamos GraphQLError para que Apollo devuelva 200 con error code UNAUTHENTICATED
-    // y NO un HTTP 500 que rompe al cliente
     if (!user && !isLogin && !isIntrospection) {
       const { GraphQLError } = await import('graphql');
       throw new GraphQLError('No autenticado', {
