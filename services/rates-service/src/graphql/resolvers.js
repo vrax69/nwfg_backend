@@ -26,6 +26,56 @@ const resolvers = {
         return { success: false, utility: null, message: err.message };
       }
     },
+
+    updateRate: async (_, { id, input }) => {
+      try {
+        const rate = await RatesModel.updateById(id, input);
+        if (!rate) return { success: false, rate: null, message: 'Tarifa no encontrada' };
+        // Notify subscribers so RatesEditor refreshes in real time
+        pubsub.publish('RATE_UPDATED', {
+          ratesUpdated: { provider_id: rate.provider_id, count: 1, timestamp: new Date().toISOString() }
+        }).catch(() => {});
+        return { success: true, rate, message: 'Tarifa actualizada' };
+      } catch (err) {
+        console.error('[updateRate] error:', err.message);
+        return { success: false, rate: null, message: err.message };
+      }
+    },
+
+    deleteRate: async (_, { id }) => {
+      try {
+        const ok = await RatesModel.deleteById(id);
+        return ok
+          ? { success: true,  message: 'Tarifa eliminada' }
+          : { success: false, message: 'Tarifa no encontrada' };
+      } catch (err) {
+        console.error('[deleteRate] error:', err.message);
+        return { success: false, message: err.message };
+      }
+    },
+
+    updateUtility: async (_, { id, input }) => {
+      try {
+        const utility = await UtilityModel.updateById(id, input);
+        if (!utility) return { success: false, utility: null, message: 'Utilidad no encontrada' };
+        return { success: true, utility, message: 'Utilidad actualizada' };
+      } catch (err) {
+        console.error('[updateUtility] error:', err.message);
+        return { success: false, utility: null, message: err.message };
+      }
+    },
+
+    deleteUtility: async (_, { id }) => {
+      try {
+        const ok = await UtilityModel.deleteById(id);
+        return ok
+          ? { success: true,  message: 'Utilidad eliminada' }
+          : { success: false, message: 'Utilidad no encontrada' };
+      } catch (err) {
+        console.error('[deleteUtility] error:', err.message);
+        return { success: false, message: err.message };
+      }
+    },
   },
   Subscription: {
     ratesUpdated: {
@@ -46,6 +96,14 @@ const resolvers = {
 
     getProviders: async () => {
       return await ProvidersModel.getAll();
+    },
+
+    getRatesAdmin: async (_, { provider_id, state, commodity, search, limit, offset }, context) => {
+      const userRole = (context.req.headers['x-user-role'] || '').toUpperCase();
+      // Accepts NWFG_ADMIN, FIS_ADMIN, QA_AGENT (as produced by users-service mapRole)
+      const allowed = userRole.includes('ADMIN') || userRole.includes('QA');
+      if (!allowed) throw new Error('No autorizado');
+      return await RatesModel.findAllAdmin({ provider_id, state, commodity, search, limit, offset });
     },
 
     // Nueva Query: Estructura del Mercado (Grid)

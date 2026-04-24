@@ -1,15 +1,16 @@
 // services/rates-service/src/config/redis.js
-const { createClient } = require('redis');
+// Uses ioredis (already in package.json) — NOT the 'redis' v4 package.
+// This client is used exclusively for publishing to Redis channels (RATE_EVENTS).
+// It is NOT put in subscriber mode, so publish() is safe to call directly.
+const Redis = require('ioredis');
 
-const redisClient = createClient({
-    url: process.env.REDIS_URL || 'redis://redis:6379'
+const redisClient = new Redis({
+    host: process.env.REDIS_HOST || 'redis',
+    port: parseInt(process.env.REDIS_PORT) || 6379,
+    retryStrategy: (times) => Math.min(times * 50, 2000),
 });
 
-redisClient.on('error', (err) => console.error('❌ Redis Client Error', err));
-
-(async () => {
-    await redisClient.connect();
-    console.log('✔ Connected to Redis');
-})();
+redisClient.on('connect', () => console.log('✅ rates-service Redis connected'));
+redisClient.on('error',   (err) => console.error('❌ rates-service Redis error:', err.message));
 
 module.exports = redisClient;

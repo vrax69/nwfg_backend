@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const pubsub = require('../config/pubsub');
+const redis = require('../config/redis');
 
 class RateModel {
   // Para ADR 006: Resolución de entidades federadas
@@ -124,6 +125,99 @@ class RateModel {
     return rows;
   }
 
+  /**
+   * Admin-facing paginated rate list with joined provider/utility names.
+   * Returns { items, total } for the RatesEditor table.
+   */
+  static async findAllAdmin({ provider_id, state, commodity, search, limit = 50, offset = 0 } = {}) {
+    let where = "WHERE r.status IN ('active','draft')";
+    const params = [];
+
+    if (provider_id) {
+      where += ' AND r.provider_id = ?';
+      params.push(provider_id);
+    }
+    if (state) {
+      where += ' AND r.state = ?';
+      params.push(state);
+    }
+    if (commodity) {
+      where += ' AND r.commodity = ?';
+      params.push(commodity);
+    }
+    if (search) {
+      where += ' AND (r.product LIKE ? OR r.company_dba_name LIKE ? OR u.nombre LIKE ?)';
+      const like = `%${search}%`;
+      params.push(like, like, like);
+    }
+
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM rates r
+      LEFT JOIN utilities u ON u.id = r.utility_id
+      LEFT JOIN providers p ON p.id = r.provider_id
+      ${where}
+    `;
+    const dataQuery = `
+      SELECT
+        r.id, r.provider_id, p.nombre AS provider_nombre,
+        r.utility_id, u.nombre AS utility_nombre,
+        r.external_id, r.company_dba_name, r.product,
+        r.state, r.pricing_type, r.segment, r.commodity, r.unit,
+        r.rate_value, r.ptc, r.msf, r.term, r.cancellation,
+        r.status, r.attributes
+      FROM rates r
+      LEFT JOIN utilities u ON u.id = r.utility_id
+      LEFT JOIN providers p ON p.id = r.provider_id
+      ${where}
+      ORDER BY r.id DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [[{ total }]] = await db.query(countQuery, params);
+    const [items] = await db.query(dataQuery, [...params, Number(limit), Number(offset)]);
+
+    return { items, total };
+  }
+
+  /** Update a single rate by ID. Only provided fields are changed. */
+  static async updateById(id, fields) {
+    const allowed = [
+      'product', 'state', 'pricing_type', 'segment', 'commodity', 'unit',
+      'rate_value', 'ptc', 'msf', 'term', 'cancellation', 'status',
+    ];
+    const setClauses = [];
+    const params = [];
+
+    for (const key of allowed) {
+      if (fields[key] !== undefined) {
+        setClauses.push(`${key} = ?`);
+        params.push(fields[key]);
+      }
+    }
+
+    if (setClauses.length === 0) throw new Error('No fields to update');
+
+    params.push(id);
+    await db.execute(`UPDATE rates SET ${setClauses.join(', ')} WHERE id = ?`, params);
+
+    const [[row]] = await db.query(`
+      SELECT r.*, u.nombre AS utility_nombre, p.nombre AS provider_nombre
+      FROM rates r
+      LEFT JOIN utilities u ON u.id = r.utility_id
+      LEFT JOIN providers p ON p.id = r.provider_id
+      WHERE r.id = ?
+    `, [id]);
+
+    return row || null;
+  }
+
+  /** Hard-delete a rate by ID. */
+  static async deleteById(id) {
+    const [result] = await db.execute('DELETE FROM rates WHERE id = ?', [id]);
+    return result.affectedRows > 0;
+  }
+
   // Llamar UNA SOLA VEZ antes de iniciar el ETL (desde upload.controller.js /confirm).
   // Nunca desde bulkInsert para no perder batches anteriores del mismo proceso.
   static async clearDrafts(providerId) {
@@ -185,13 +279,18 @@ class RateModel {
 
       await connection.commit();
 
-      pubsub.publish('RATE_UPDATED', {
-        ratesUpdated: {
-          provider_id: providerId,
-          count:       rates.length,
-          timestamp:   new Date().toISOString(),
-        },
-      }).catch(err => console.error('❌ PubSub Error:', err));
+      const rateEvent = {
+        provider_id: providerId,
+        count:       rates.length,
+        timestamp:   new Date().toISOString(),
+      };
+
+      pubsub.publish('RATE_UPDATED', { ratesUpdated: rateEvent })
+        .catch(err => console.error('❌ PubSub Error:', err));
+
+      // Bridge to gateway WS via Redis pub/sub
+      redis.publish('RATE_EVENTS', JSON.stringify(rateEvent))
+        .catch(err => console.error('❌ Redis RATE_EVENTS publish error:', err));
 
       return { success: true, count: rates.length };
     } catch (error) {

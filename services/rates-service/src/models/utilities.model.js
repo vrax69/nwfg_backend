@@ -38,6 +38,36 @@ class UtilityModel {
     return null;
   }
 
+  /** Update a utility's editable fields. Returns the updated row. */
+  static async updateById(id, { nombre, market, slug, logo_url }) {
+    const allowed = { nombre, market, slug, logo_url };
+    const setClauses = [];
+    const params = [];
+
+    for (const [key, val] of Object.entries(allowed)) {
+      if (val !== undefined) {
+        setClauses.push(`${key} = ?`);
+        params.push(val);
+      }
+    }
+    if (setClauses.length === 0) throw new Error('No fields to update');
+
+    params.push(id);
+    await db.execute(`UPDATE utilities SET ${setClauses.join(', ')} WHERE id = ?`, params);
+
+    const [[row]] = await db.query(
+      'SELECT id, nombre, market, logo_url, slug FROM utilities WHERE id = ?',
+      [id]
+    );
+    return row || null;
+  }
+
+  /** Hard-delete a utility by ID. */
+  static async deleteById(id) {
+    const [result] = await db.execute('DELETE FROM utilities WHERE id = ?', [id]);
+    return result.affectedRows > 0;
+  }
+
   static async createAlias(dirtyName, utilityId) {
     // Upsert alias
     await db.query(

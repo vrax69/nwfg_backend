@@ -30,9 +30,9 @@ const redisPub = new Redis({
 redisPub.on('connect', () => console.log('✅ Gateway redisPub connected'));
 redisPub.on('error', (err) => console.error('❌ Gateway redisPub error:', err.message));
 
-redisSub.subscribe('UPLOAD_EVENTS', 'presence:typing', (err) => {
+redisSub.subscribe('UPLOAD_EVENTS', 'presence:typing', 'RATE_EVENTS', (err) => {
   if (err) console.error('❌ Redis subscribe failed:', err.message);
-  else console.log('✅ Gateway subscribed to UPLOAD_EVENTS + presence:typing');
+  else console.log('✅ Gateway subscribed to UPLOAD_EVENTS + presence:typing + RATE_EVENTS');
 });
 
 // Bridge Redis messages → GraphQL PubSub
@@ -43,6 +43,9 @@ redisSub.on('message', (channel, message) => {
       pubsub.publish('UPLOAD_EVENT', { uploadEvent: payload });
     } else if (channel === 'presence:typing') {
       pubsub.publish('PRESENCE_TYPING', { presenceTyping: payload });
+    } else if (channel === 'RATE_EVENTS') {
+      // Bridge rates-service pubsub → gateway WS clients
+      pubsub.publish('RATE_UPDATED', { rateUpdated: payload });
     }
   } catch (e) {
     console.error('❌ Failed to parse Redis message:', e.message);

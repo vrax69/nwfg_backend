@@ -63,6 +63,74 @@ const typeDefs = gql`
     message: String
   }
 
+  # ── Admin rate management ────────────────────────────────────────────────────
+  type RateAdminItem {
+    id: ID!
+    provider_id: ID
+    provider_nombre: String
+    utility_id: ID
+    utility_nombre: String
+    external_id: String
+    company_dba_name: String
+    product: String
+    state: String
+    pricing_type: String
+    segment: String
+    commodity: String
+    unit: String
+    rate_value: Float
+    ptc: Float
+    msf: Float
+    term: Int
+    cancellation: String
+    status: String
+    attributes: JSON
+  }
+
+  type RatesAdminPage {
+    items: [RateAdminItem!]!
+    total: Int!
+  }
+
+  input UpdateRateInput {
+    product: String
+    state: String
+    pricing_type: String
+    segment: String
+    commodity: String
+    unit: String
+    rate_value: Float
+    ptc: Float
+    msf: Float
+    term: Int
+    cancellation: String
+    status: String
+  }
+
+  input UpdateUtilityInput {
+    nombre: String
+    market: String
+    slug: String
+    logo_url: String
+  }
+
+  type UpdateRateResult {
+    success: Boolean!
+    rate: RateAdminItem
+    message: String
+  }
+
+  type UpdateUtilityResult {
+    success: Boolean!
+    utility: UtilityItem
+    message: String
+  }
+
+  type DeleteRateResult {
+    success: Boolean!
+    message: String
+  }
+
   type Query {
     # Filtros dinámicos para el grid
     getRates(provider_id: ID, state: String, utilityId: ID): [Rate]
@@ -75,6 +143,16 @@ const typeDefs = gql`
 
     # Active provider catalog — for ETL wizard provider selector
     getProviders: [ProviderItem!]!
+
+    # Admin rate table — paginated, with all columns
+    getRatesAdmin(
+      provider_id: ID
+      state: String
+      commodity: String
+      search: String
+      limit: Int
+      offset: Int
+    ): RatesAdminPage!
   }
 
   extend type Mutation {
@@ -83,6 +161,18 @@ const typeDefs = gql`
 
     # Add a new utility to the catalog (inline form in alias resolver)
     createUtility(nombre: String!, market: String!, slug: String): CreateUtilityResult!
+
+    # Update individual rate fields (inline edit in RatesEditor)
+    updateRate(id: ID!, input: UpdateRateInput!): UpdateRateResult!
+
+    # Delete a rate record
+    deleteRate(id: ID!): DeleteRateResult!
+
+    # Update utility catalog entry
+    updateUtility(id: ID!, input: UpdateUtilityInput!): UpdateUtilityResult!
+
+    # Delete a utility from the catalog
+    deleteUtility(id: ID!): DeleteRateResult!
   }
 
   extend type Subscription {
