@@ -33,6 +33,14 @@ const typeDefs = gql`
     id: ID!
     nombre: String!
     market: String!
+    logo_url: String
+    slug: String
+  }
+
+  type CreateUtilityResult {
+    success: Boolean!
+    utility: UtilityItem
+    message: String
   }
 
   # Active energy provider — used by the ETL wizard provider selector
@@ -41,6 +49,8 @@ const typeDefs = gql`
     nombre: String!
     logo_url: String
     spl_slug: String
+    # 'default' | 'indra' | 'cinch' — controls ETL parser and wizard column-mapping step
+    parser_type: String
   }
 
   type State {
@@ -70,6 +80,9 @@ const typeDefs = gql`
   extend type Mutation {
     # Create or update a dirty-name → utility_id alias (alias resolver UI)
     createAlias(dirtyName: String!, utilityId: Int!): AliasResult!
+
+    # Add a new utility to the catalog (inline form in alias resolver)
+    createUtility(nombre: String!, market: String!, slug: String): CreateUtilityResult!
   }
 
   extend type Subscription {

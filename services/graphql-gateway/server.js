@@ -153,20 +153,23 @@ const subscriptionTypeDefs = `
     rowCount: Int!
   }
 
+  type CancelUploadResult {
+    success: Boolean!
+    message: String
+  }
+
   type Mutation {
     setPresence(action: String!): Boolean
 
     # ADR-002: Frontend calls this instead of the REST /api/upload endpoint.
-    # Gateway receives the file as base64, re-signs a short-lived internal token,
-    # then calls upload-service container-to-container (allowed per ADR-002).
-    # fileBase64: result of FileReader.readAsDataURL(...).split(',')[1]
     uploadFile(fileBase64: String!, filename: String!): UploadResult!
 
     # FE sends this after the column-mapping step. Gateway publishes ETL_START to Redis.
-    # upload-service subscriber enqueues the BullMQ job.
-    # rates-service subscriber runs clearDrafts.
-    # mappingJson: JSON.stringify({ excelHeader: 'canonical_key', ... })
     confirmUpload(sessionId: String!, providerId: Int!, mappingJson: String): ConfirmUploadResult!
+
+    # Abort an in-flight or stuck ETL session.
+    # Sets a cancellation flag in Redis — the worker checks it before each batch and exits.
+    cancelUpload(sessionId: String!): CancelUploadResult!
   }
 `;
 
@@ -254,6 +257,37 @@ const subscriptionResolvers = {
 
       console.log(`📡 [gateway] ETL_START published session=${sessionId?.slice(-6)} provider=${providerId}`);
       return { success: true, message: 'ETL iniciado' };
+    },
+
+    cancelUpload: async (_, { sessionId }, context) => {
+      const userId = context.user?.id?.toString() || 'unknown';
+      try {
+        // 1. Flag the session so the worker stops after the current batch
+        await redisPub.set(`upload:${sessionId}:status`, 'cancelled', 'EX', 3600);
+        // 2. Publish a cancel event so the worker exits its loop immediately
+        await redisPub.publish('ETL_EVENTS', JSON.stringify({
+          type: 'ETL_CANCEL',
+          sessionId,
+          userId,
+          timestamp: new Date().toISOString(),
+        }));
+        // 3. Emit a WS event so the FE updates its UI in real time
+        pubsub.publish('UPLOAD_EVENT', {
+          uploadEvent: {
+            type:      'UPLOAD_CANCELLED',
+            sessionId,
+            userId,
+            scope:     'local',
+            message:   'Proceso cancelado por el usuario.',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        console.log(`🛑 [gateway] cancelUpload session=${sessionId?.slice(-6)} by user=${userId}`);
+        return { success: true, message: 'Proceso cancelado' };
+      } catch (err) {
+        console.error('❌ [gateway] cancelUpload error:', err.message);
+        return { success: false, message: err.message };
+      }
     },
 
     setPresence: async (_, { action }, context) => {

@@ -9,7 +9,7 @@ const ProvidersModel = {
     // ================================
     async getAll() {
         const [rows] = await pool.query(`
-            SELECT id, nombre, logo_url, spl_slug
+            SELECT id, nombre, logo_url, spl_slug, parser_type
             FROM providers
             WHERE status = 'active'
             ORDER BY nombre ASC

@@ -16,6 +16,16 @@ const resolvers = {
         return { success: false, message: err.message };
       }
     },
+
+    createUtility: async (_, { nombre, market, slug }) => {
+      try {
+        const utility = await UtilityModel.create({ nombre, market, slug });
+        return { success: true, utility, message: `Utilidad "${nombre}" creada` };
+      } catch (err) {
+        console.error('[createUtility] error:', err.message);
+        return { success: false, utility: null, message: err.message };
+      }
+    },
   },
   Subscription: {
     ratesUpdated: {

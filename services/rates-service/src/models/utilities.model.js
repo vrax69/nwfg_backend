@@ -4,9 +4,21 @@ class UtilityModel {
   /** Returns all utilities ordered alphabetically — used by the alias resolver UI */
   static async findAll() {
     const [rows] = await db.query(
-      'SELECT id, nombre, market FROM utilities ORDER BY nombre ASC'
+      'SELECT id, nombre, market, logo_url, slug FROM utilities ORDER BY nombre ASC'
     );
     return rows;
+  }
+
+  static async create({ nombre, market, slug }) {
+    const [result] = await db.query(
+      'INSERT INTO utilities (nombre, market, slug) VALUES (?, ?, ?)',
+      [nombre.trim(), market, slug || null]
+    );
+    const [[row]] = await db.query(
+      'SELECT id, nombre, market, logo_url, slug FROM utilities WHERE id = ?',
+      [result.insertId]
+    );
+    return row;
   }
 
   static async resolveAlias(dirtyName) {
